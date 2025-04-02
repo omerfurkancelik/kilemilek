@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipDescription
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.TypedValue
@@ -16,10 +17,11 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.constraintlayout.widget.ConstraintLayout
-import com.example.kilemilek.LetterDistribution
+import com.example.kilemilek.objects.LetterDistribution
 import com.example.kilemilek.R
 import com.example.kilemilek.models.GameData
 import com.example.kilemilek.models.GameRequestModel
@@ -47,6 +49,7 @@ class GameActivity : AppCompatActivity() {
     private lateinit var gameRequest: GameRequestModel
     private lateinit var db: FirebaseFirestore
     private lateinit var currentUserId: String
+    private lateinit var shuffleButton: Button
 
     // Letters in the player's rack
     private val playerLetters = mutableListOf<Char>()
@@ -66,6 +69,7 @@ class GameActivity : AppCompatActivity() {
     // Game state flags
     private var isFirstMoveInGame = false
 
+    @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,6 +89,15 @@ class GameActivity : AppCompatActivity() {
         letterRackLayout = findViewById(R.id.letter_rack)
         playButton = findViewById(R.id.play_button)
         withdrawButton = findViewById(R.id.withdraw_button)
+        shuffleButton = findViewById(R.id.shuffle_button)
+
+
+        shuffleButton.setOnClickListener {
+            shuffleLetters()
+        }
+
+        shuffleButton.tooltipText = "Shuffle Letters"
+        withdrawButton.tooltipText = "Withdraw Letters"
 
         // Initialize Firestore
         db = FirebaseFirestore.getInstance()
@@ -134,7 +147,7 @@ class GameActivity : AppCompatActivity() {
         // Update the letter rack UI
         updateLetterRackUI()
 
-        Toast.makeText(this, "Letters withdrawn", Toast.LENGTH_SHORT).show()
+        //Toast.makeText(this, "Letters withdrawn", Toast.LENGTH_SHORT).show()
     }
 
     private fun loadGameData() {
@@ -211,6 +224,51 @@ class GameActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 // Skip invalid positions
             }
+        }
+
+        // Check if it's the player's turn or opponent's turn
+        val isPlayerTurn = gameRequest.gameData.playerTurn == currentUserId
+
+        // Create or find the opponent turn message TextView
+        var opponentTurnMessage = findViewById<TextView>(R.id.opponent_turn_message)
+        if (opponentTurnMessage == null) {
+            // Create new TextView if it doesn't exist
+            opponentTurnMessage = TextView(this).apply {
+                id = R.id.opponent_turn_message
+                layoutParams = ConstraintLayout.LayoutParams(
+                    ConstraintLayout.LayoutParams.MATCH_PARENT,
+                    ConstraintLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    // Position it between game board and letter rack
+                    topToBottom = R.id.game_board_view
+                    bottomToTop = R.id.letter_rack_card
+                    startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                    endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+                    topMargin = 8
+                    bottomMargin = 8
+                }
+                gravity = android.view.Gravity.CENTER
+                textSize = 18f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(Color.parseColor("#FF9800")) // Orange color
+                text = "OPPONENT'S TURN"
+            }
+
+            // Add to the constraint layout
+            (findViewById<View>(R.id.game_board_view).parent as ViewGroup).addView(opponentTurnMessage)
+        }
+
+        // Update UI based on whose turn it is
+        if (isPlayerTurn) {
+            // Player's turn - enable play button and hide message
+            playButton.isEnabled = true
+            playButton.text = "Play Word"
+            opponentTurnMessage.visibility = View.GONE
+        } else {
+            // Opponent's turn - disable play button and show message
+            playButton.isEnabled = false
+            playButton.text = "Wait for Opponent"
+            opponentTurnMessage.visibility = View.VISIBLE
         }
     }
 
@@ -295,6 +353,9 @@ class GameActivity : AppCompatActivity() {
     private fun createLetterTile(letter: Char, isGray: Boolean): CardView {
         // Create card container
         val letterCard = CardView(this).apply {
+
+            tag = letter
+
             radius = TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP, 8f, resources.displayMetrics
             )
@@ -445,7 +506,7 @@ class GameActivity : AppCompatActivity() {
                                     val centerCol = GameBoardMatrix.BOARD_SIZE / 2
 
                                     if (row != centerRow || col != centerCol) {
-                                        Toast.makeText(this, "First move must include the center tile", Toast.LENGTH_SHORT).show()
+                                        //Toast.makeText(this, "First move must include the center tile", Toast.LENGTH_SHORT).show()
 
                                         // Return letter to rack
                                         if (!dragSourceIsBoard) {
@@ -462,7 +523,7 @@ class GameActivity : AppCompatActivity() {
                                     }
                                 } else if (!isFirstMoveInGame && !currentTurnLetters.isEmpty() && !isAdjacentToExistingLetter(row, col)) {
                                     // After first move, letters must be adjacent to existing letters
-                                    Toast.makeText(this, "Letters must be adjacent to existing letters", Toast.LENGTH_SHORT).show()
+                                    //Toast.makeText(this, "Letters must be adjacent to existing letters", Toast.LENGTH_SHORT).show()
 
                                     // Return letter to rack
                                     if (!dragSourceIsBoard) {
@@ -532,13 +593,20 @@ class GameActivity : AppCompatActivity() {
                 }
                 DragEvent.ACTION_DRAG_ENDED -> {
                     try {
-                        // If drag ended without drop, show the view again or add back to letters
+                        // If drag ended without drop on a valid target
                         if (!event.result) {
                             if (!dragSourceIsBoard) {
-                                // Letter was from rack
+                                // Letter was from rack, make it visible again
                                 currentDraggedView?.visibility = View.VISIBLE
                             } else {
-                                // Letter was from board, add back to player letters
+                                // Letter was from board and dropped outside valid targets
+                                // Remove from board first
+                                dragSourcePosition?.let { (sourceRow, sourceCol) ->
+                                    gameBoardView.clearLetter(sourceRow, sourceCol)
+                                    currentTurnLetters.remove(Pair(sourceRow, sourceCol))
+                                }
+
+                                // Then add to player's rack
                                 currentDraggedLetter?.let {
                                     playerLetters.add(it)
                                     updateLetterRackUI()
@@ -571,28 +639,101 @@ class GameActivity : AppCompatActivity() {
                 }
                 DragEvent.ACTION_DROP -> {
                     try {
-                        // Return the letter to the rack
-                        if (currentDraggedLetter != null) {
-                            // If from board, remove from current turn letters
-                            if (dragSourceIsBoard && dragSourcePosition != null) {
-                                currentTurnLetters.remove(dragSourcePosition)
-                            }
+                        // If dropping on another letter in the rack (for shuffling)
+                        val targetView = findLetterViewAt(event.x, event.y)
+                        if (targetView != null && targetView != currentDraggedView && !dragSourceIsBoard) {
+                            // Get the target letter
+                            val targetLetter = targetView.tag as? Char
 
-                            // Add to player rack
-                            playerLetters.add(currentDraggedLetter!!)
-                            view.post {
-                                updateLetterRackUI()
+                            if (targetLetter != null && currentDraggedLetter != null) {
+                                // This is a shuffle operation - swap the two letters
+                                val sourceLetter = currentDraggedLetter!!
+
+                                // Find positions in playerLetters
+                                val sourceIndex = playerLetters.indexOf(sourceLetter)
+                                val targetIndex = playerLetters.indexOf(targetLetter)
+
+                                if (sourceIndex >= 0 && targetIndex >= 0) {
+                                    // Swap the letters
+                                    playerLetters[sourceIndex] = targetLetter
+                                    playerLetters[targetIndex] = sourceLetter
+
+                                    // Update UI
+                                    updateLetterRackUI()
+                                }
+                            }
+                        } else {
+                            // Normal drop on rack (returning letter)
+                            if (currentDraggedLetter != null) {
+                                // If from board, remove from current turn letters
+                                if (dragSourceIsBoard && dragSourcePosition != null) {
+                                    currentTurnLetters.remove(dragSourcePosition)
+                                    gameBoardView.clearLetter(dragSourcePosition!!.first, dragSourcePosition!!.second)
+                                }
+
+                                // Add to player rack
+                                playerLetters.add(currentDraggedLetter!!)
+                                view.post {
+                                    updateLetterRackUI()
+                                }
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e("GameActivity", "Error returning letter to rack: ${e.message}")
+                        Log.e("GameActivity", "Error handling drop on letter rack: ${e.message}")
                         e.printStackTrace()
+
+                        // Make sure letter is visible again if there was an error
+                        if (!dragSourceIsBoard) {
+                            currentDraggedView?.visibility = View.VISIBLE
+                        }
+                    }
+                    true
+                }
+                DragEvent.ACTION_DRAG_ENDED -> {
+                    if (!event.result && !dragSourceIsBoard) {
+                        // Make sure letter is visible again if drag ended outside any target
+                        currentDraggedView?.visibility = View.VISIBLE
                     }
                     true
                 }
                 else -> true
             }
         }
+    }
+
+    private fun shuffleLetters() {
+        playerLetters.shuffle()
+        updateLetterRackUI()
+        //Toast.makeText(this, "Letters shuffled", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Find a letter view at the specified coordinates in the letter rack
+     */
+    private fun findLetterViewAt(x: Float, y: Float): View? {
+        // Convert coordinates to be relative to the letter rack
+        val letterRackLocation = IntArray(2)
+        letterRackLayout.getLocationOnScreen(letterRackLocation)
+
+        val relativeX = x + letterRackLayout.scrollX
+
+        // Check all letter tiles
+        for (i in 0 until letterRackLayout.childCount) {
+            val child = letterRackLayout.getChildAt(i)
+            val childLocation = IntArray(2)
+            child.getLocationOnScreen(childLocation)
+
+            val childLeft = childLocation[0] - letterRackLocation[0]
+            val childRight = childLeft + child.width
+
+            // Check if point is within this view horizontally
+            // (We're in a horizontal scroll view, so we only need to check X)
+            if (relativeX >= childLeft && relativeX <= childRight) {
+                return child
+            }
+        }
+
+        return null
     }
 
     private fun withdrawLetterFromBoard(row: Int, col: Int) {

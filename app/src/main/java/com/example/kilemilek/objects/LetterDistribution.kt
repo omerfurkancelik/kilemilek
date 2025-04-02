@@ -1,4 +1,4 @@
-package com.example.kilemilek
+package com.example.kilemilek.objects
 
 /**
  * Represents the distribution and values of letters in the game

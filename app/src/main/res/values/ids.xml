@@ -1,0 +1,3 @@
+<resources>
+    <item name="opponent_turn_text" type="id" />
+</resources>

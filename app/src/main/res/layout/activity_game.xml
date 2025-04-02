@@ -91,6 +91,22 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/game_info_card" />
 
+
+    <TextView
+        android:id="@+id/opponent_turn_message"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="OPPONENT'S TURN"
+        android:textColor="#FF9800"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/letter_rack_card"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/game_board_view" />
+
     <!-- Letter Rack -->
     <androidx.cardview.widget.CardView
         android:id="@+id/letter_rack_card"
@@ -144,18 +160,30 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- Withdraw Button -->
-        <Button
-            android:id="@+id/withdraw_button"
-            android:layout_width="0dp"
+        <!-- Shuffle Button (Icon) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/shuffle_button"
+            android:layout_width="56dp"
             android:layout_height="56dp"
             android:layout_marginEnd="8dp"
-            android:layout_weight="1"
+            android:backgroundTint="#9C27B0"
+            app:icon="@drawable/ic_shuffle"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconTint="@color/white"
+            app:cornerRadius="8dp" />
+
+        <!-- Withdraw Button (Icon) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/withdraw_button"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="8dp"
             android:backgroundTint="#4CAF50"
-            android:text="Withdraw Letters"
-            android:textAllCaps="false"
-            android:textColor="@color/white"
-            android:textSize="14sp"
+            app:icon="@drawable/ic_withdraw"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconTint="@color/white"
             app:cornerRadius="8dp" />
 
         <!-- Play Button -->
