@@ -1,15 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#6200EE</color>
-    <color name="primary_dark">#3700B3</color>
-    <color name="primary_light">#BB86FC</color>
-    <color name="accent">#03DAC6</color>
-    <color name="text_primary">#333333</color>
-    <color name="text_secondary">#757575</color>
+    <!-- Primary Colors -->
+    <color name="primary">#E53935</color>          <!-- Vibrant Red -->
+    <color name="primary_dark">#C62828</color>     <!-- Darker Red -->
+    <color name="primary_light">#FFCDD2</color>    <!-- Light Red -->
+
+    <!-- Accent Colors -->
+    <color name="accent">#FF9800</color>           <!-- Orange -->
+    <color name="accent_light">#FFCC80</color>     <!-- Light Orange -->
+    <color name="accent_dark">#F57C00</color>      <!-- Dark Orange -->
+
+    <!-- Highlight Color -->
+    <color name="highlight">#FFF59D</color>        <!-- Light Yellow -->
+
+    <!-- Text Colors -->
+    <color name="text_primary">#212121</color>     <!-- Dark Gray for Primary Text -->
+    <color name="text_secondary">#757575</color>   <!-- Medium Gray for Secondary Text -->
+    <color name="text_on_primary">#FFFFFF</color>  <!-- White text on primary color -->
+
+    <!-- Basic Colors -->
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
-    <color name="divider">#E0E0E0</color>
-    <color name="error">#CF6679</color>
-    <color name="background">#F5F5F5</color>
-    <color name="online_green">#4CAF50</color>
+    <color name="divider">#EEEEEE</color>
+    <color name="error">#B71C1C</color>            <!-- Dark Red for Errors -->
+    <color name="background">#FFFAF0</color>       <!-- Floral White Background -->
+    <color name="online_green">#4CAF50</color>     <!-- Green for Online Status -->
 </resources>
