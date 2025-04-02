@@ -1,4 +1,4 @@
-package com.example.kilemilek
+package com.example.kilemilek.fragments
 
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -6,12 +6,17 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.fragment.app.Fragment
+import com.example.kilemilek.R
+import com.example.kilemilek.models.GameData
+import com.example.kilemilek.models.GameRequestModel
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import java.util.*
 
 class FriendsFragment : Fragment() {
 
@@ -28,6 +33,8 @@ class FriendsFragment : Fragment() {
 
     private lateinit var db: FirebaseFirestore
     private var currentUserId: String = ""
+    private var currentUserName: String = ""
+    private var currentUserEmail: String = ""
 
     private val friendsList = mutableListOf<FriendModel>()
     private val requestsList = mutableListOf<FriendModel>()
@@ -48,6 +55,16 @@ class FriendsFragment : Fragment() {
         val currentUser = FirebaseAuth.getInstance().currentUser
         currentUser?.let {
             currentUserId = it.uid
+            currentUserEmail = it.email ?: ""
+
+            // Get current user name from Firestore
+            db.collection("users").document(currentUserId)
+                .get()
+                .addOnSuccessListener { document ->
+                    if (document != null && document.exists()) {
+                        currentUserName = document.getString("name") ?: ""
+                    }
+                }
         }
 
         // Initialize views
@@ -234,18 +251,15 @@ class FriendsFragment : Fragment() {
                         }
 
                         // Create a friend request
-                        val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email ?: ""
-                        val currentUserName = "" // You would get this from your users collection
-
-                        val friendRequest = hashMapOf(
-                            "userId" to currentUserId,
-                            "userEmail" to currentUserEmail,
-                            "userName" to currentUserName,
-                            "friendId" to friendId,
-                            "friendEmail" to friendEmail,
-                            "friendName" to friendName,
-                            "status" to "pending",
-                            "timestamp" to System.currentTimeMillis()
+                        val friendRequest = FriendModel(
+                            userId = currentUserId,
+                            userEmail = currentUserEmail,
+                            userName = currentUserName,
+                            friendId = friendId,
+                            friendEmail = friendEmail,
+                            friendName = friendName,
+                            status = "pending",
+                            timestamp = System.currentTimeMillis()
                         )
 
                         // Add to Firestore
@@ -269,6 +283,56 @@ class FriendsFragment : Fragment() {
             .addOnFailureListener {
                 progressBar.visibility = View.GONE
                 Toast.makeText(context, "Error finding user: ${it.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun sendGameRequest(friend: FriendModel) {
+        // Show progress dialog
+        val progressDialog = android.app.ProgressDialog(context)
+        progressDialog.setMessage("Sending game request...")
+        progressDialog.setCancelable(false)
+        progressDialog.show()
+
+        // Create a new game request
+        val gameRequest = GameRequestModel(
+            senderId = currentUserId,
+            senderName = currentUserName,
+            senderEmail = currentUserEmail,
+            receiverId = friend.friendId,
+            receiverName = friend.friendName,
+            receiverEmail = friend.friendEmail,
+            status = "pending",
+            createdAt = System.currentTimeMillis(),
+            lastUpdatedAt = System.currentTimeMillis(),
+            gameData = GameData(
+                playerTurn = currentUserId,
+                playerScores = mapOf(
+                    currentUserId to 0,
+                    friend.friendId to 0
+                )
+            )
+        )
+
+        // Add to Firestore
+        db.collection("game_requests")
+            .add(gameRequest)
+            .addOnSuccessListener { documentReference ->
+                // Update the game request with its ID
+                db.collection("game_requests")
+                    .document(documentReference.id)
+                    .update("id", documentReference.id)
+                    .addOnSuccessListener {
+                        progressDialog.dismiss()
+                        Toast.makeText(context, "Game request sent to ${friend.friendName}", Toast.LENGTH_SHORT).show()
+                    }
+                    .addOnFailureListener {
+                        progressDialog.dismiss()
+                        Toast.makeText(context, "Error updating game request: ${it.message}", Toast.LENGTH_SHORT).show()
+                    }
+            }
+            .addOnFailureListener {
+                progressDialog.dismiss()
+                Toast.makeText(context, "Failed to send game request: ${it.message}", Toast.LENGTH_SHORT).show()
             }
     }
 
@@ -297,6 +361,7 @@ class FriendsFragment : Fragment() {
             val nameTextView = view.findViewById<TextView>(R.id.friend_name)
             val emailTextView = view.findViewById<TextView>(R.id.friend_email)
             val statusTextView = view.findViewById<TextView>(R.id.friend_status)
+            val inviteButton = view.findViewById<Button>(R.id.game_invite_button)
 
             nameTextView.text = friend.friendName.ifEmpty { "User" }
             emailTextView.text = friend.friendEmail
@@ -307,6 +372,19 @@ class FriendsFragment : Fragment() {
             statusTextView.text = if (isOnline) "Online" else "Offline"
             statusTextView.setTextColor(resources.getColor(
                 if (isOnline) R.color.online_green else R.color.text_secondary, null))
+
+            // Set up invite button
+            inviteButton.setOnClickListener {
+                // Show confirmation dialog
+                MaterialAlertDialogBuilder(context)
+                    .setTitle("Send Game Request")
+                    .setMessage("Do you want to send a game request to ${friend.friendName}?")
+                    .setPositiveButton("Send") { _, _ ->
+                        sendGameRequest(friend)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
 
             return view
         }
@@ -364,15 +442,15 @@ class FriendsFragment : Fragment() {
                     .update("status", "accepted")
                     .addOnSuccessListener {
                         // Create a reciprocal friend entry
-                        val reciprocalFriend = hashMapOf(
-                            "userId" to currentUserId,
-                            "userEmail" to (FirebaseAuth.getInstance().currentUser?.email ?: ""),
-                            "userName" to "", // You would get this from your users collection
-                            "friendId" to request.userId,
-                            "friendEmail" to request.userEmail,
-                            "friendName" to request.userName,
-                            "status" to "accepted",
-                            "timestamp" to System.currentTimeMillis()
+                        val reciprocalFriend = FriendModel(
+                            userId = currentUserId,
+                            userEmail = currentUserEmail,
+                            userName = currentUserName,
+                            friendId = request.userId,
+                            friendEmail = request.userEmail,
+                            friendName = request.userName,
+                            status = "accepted",
+                            timestamp = System.currentTimeMillis()
                         )
 
                         db.collection("friends")

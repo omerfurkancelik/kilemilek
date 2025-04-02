@@ -1,12 +1,15 @@
-package com.example.kilemilek
+package com.example.kilemilek.activities
 
 import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
+import com.example.kilemilek.R
+import com.example.kilemilek.fragments.FriendsFragment
+import com.example.kilemilek.fragments.HomeFragment
+import com.example.kilemilek.fragments.ProfileFragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.firebase.auth.FirebaseAuth
 

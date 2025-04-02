@@ -1,4 +1,4 @@
-package com.example.kilemilek
+package com.example.kilemilek.models
 
 data class GameModel(
     val id: String = "",

@@ -55,4 +55,16 @@
         app:layout_constraintStart_toStartOf="@id/friend_name"
         app:layout_constraintTop_toBottomOf="@id/friend_email" />
 
+    <Button
+        android:id="@+id/game_invite_button"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginTop="8dp"
+        android:backgroundTint="@color/primary"
+        android:text="Invite to Game"
+        android:textColor="@color/white"
+        android:textSize="12sp"
+        app:layout_constraintStart_toStartOf="@id/friend_name"
+        app:layout_constraintTop_toBottomOf="@id/friend_status" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

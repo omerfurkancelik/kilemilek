@@ -18,11 +18,21 @@
     <color name="text_secondary">#757575</color>   <!-- Medium Gray for Secondary Text -->
     <color name="text_on_primary">#FFFFFF</color>  <!-- White text on primary color -->
 
+    <!-- Card Background Colors -->
+    <color name="new_game_card_bg">#E3F2FD</color>      <!-- Light Blue for New Game Card -->
+    <color name="active_games_card_bg">#E8F5E9</color>  <!-- Light Green for Active Games Card -->
+    <color name="finished_games_card_bg">#FFF3E0
+    </color> <!-- Light Orange for Finished Games Card -->
+
     <!-- Basic Colors -->
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
     <color name="divider">#EEEEEE</color>
     <color name="error">#B71C1C</color>            <!-- Dark Red for Errors -->
     <color name="background">#FFFAF0</color>       <!-- Floral White Background -->
-    <color name="online_green">#4CAF50</color>     <!-- Green for Online Status -->
+    <color name="online_green">#4CAF50</color>
+    <color name="light_blue_400">#FF29B6F6</color>
+    <color name="light_blue_600">#FF039BE5</color>
+    <color name="gray_400">#FFBDBDBD</color>
+    <color name="gray_600">#FF757575</color>     <!-- Green for Online Status -->
 </resources>
