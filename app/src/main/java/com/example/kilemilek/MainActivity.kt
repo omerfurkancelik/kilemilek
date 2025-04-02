@@ -6,11 +6,13 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.Fragment
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
 
 class MainActivity : AppCompatActivity() {
     private lateinit var mAuth: FirebaseAuth
+    private lateinit var bottomNavigation: BottomNavigationView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,8 +31,34 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // User is signed in
-        Toast.makeText(this, "Welcome to Kilemilek, ${currentUser.email}", Toast.LENGTH_SHORT).show()
+        // Initialize Bottom Navigation
+        bottomNavigation = findViewById(R.id.bottom_navigation)
+        bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.navigation_home -> {
+                    loadFragment(HomeFragment())
+                    return@setOnItemSelectedListener true
+                }
+                R.id.navigation_friends -> {
+                    loadFragment(FriendsFragment())
+                    return@setOnItemSelectedListener true
+                }
+                R.id.navigation_profile -> {
+                    loadFragment(ProfileFragment())
+                    return@setOnItemSelectedListener true
+                }
+            }
+            false
+        }
+
+        // Load default fragment
+        loadFragment(HomeFragment())
+    }
+
+    private fun loadFragment(fragment: Fragment) {
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, fragment)
+            .commit()
     }
 
     override fun onStart() {

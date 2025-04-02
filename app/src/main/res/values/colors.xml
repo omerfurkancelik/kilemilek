@@ -11,4 +11,5 @@
     <color name="divider">#E0E0E0</color>
     <color name="error">#CF6679</color>
     <color name="background">#F5F5F5</color>
+    <color name="online_green">#4CAF50</color>
 </resources>

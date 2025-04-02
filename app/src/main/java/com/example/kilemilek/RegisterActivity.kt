@@ -10,6 +10,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class RegisterActivity : AppCompatActivity() {
     private lateinit var nameLayout: TextInputLayout
@@ -24,13 +25,15 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var loginTextView: android.widget.TextView
     private lateinit var progressBar: android.widget.ProgressBar
     private lateinit var mAuth: FirebaseAuth
+    private lateinit var db: FirebaseFirestore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_register)
 
-        // Initialize Firebase Auth
+        // Initialize Firebase Auth and Firestore
         mAuth = FirebaseAuth.getInstance()
+        db = FirebaseFirestore.getInstance()
 
         // Initialize UI elements
         nameLayout = findViewById(R.id.name_input_layout)
@@ -112,16 +115,61 @@ class RegisterActivity : AppCompatActivity() {
         // Create user with email and password
         mAuth.createUserWithEmailAndPassword(email, password)
             .addOnCompleteListener(this) { task ->
-                // Hide progress bar
-                progressBar.visibility = View.GONE
-
                 if (task.isSuccessful) {
-                    // Sign in success, update UI with the signed-in user's information
-                    Toast.makeText(this@RegisterActivity, "Registration successful", Toast.LENGTH_SHORT).show()
-                    val intent = Intent(this@RegisterActivity, MainActivity::class.java)
-                    startActivity(intent)
-                    finish()
+                    // Get the current user ID
+                    val userId = mAuth.currentUser?.uid
+
+                    if (userId != null) {
+                        // Create user profile in Firestore
+                        val user = hashMapOf(
+                            "userId" to userId,
+                            "email" to email,
+                            "name" to name,
+                            "profileImageUrl" to "",
+                            "gamesPlayed" to 0,
+                            "wordsFound" to 0,
+                            "createdAt" to System.currentTimeMillis()
+                        )
+
+                        // Add user to Firestore
+                        db.collection("users").document(userId)
+                            .set(user)
+                            .addOnSuccessListener {
+                                // Hide progress bar
+                                progressBar.visibility = View.GONE
+
+                                // Registration and profile creation successful
+                                Toast.makeText(this@RegisterActivity, "Registration successful", Toast.LENGTH_SHORT).show()
+                                val intent = Intent(this@RegisterActivity, MainActivity::class.java)
+                                startActivity(intent)
+                                finish()
+                            }
+                            .addOnFailureListener { e ->
+                                // Hide progress bar
+                                progressBar.visibility = View.GONE
+
+                                // If profile creation fails, display a message to the user
+                                Toast.makeText(
+                                    this@RegisterActivity,
+                                    "Profile creation failed: " + e.message,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                    } else {
+                        // Hide progress bar
+                        progressBar.visibility = View.GONE
+
+                        // If user ID is null, display a message
+                        Toast.makeText(
+                            this@RegisterActivity,
+                            "Registration error: User ID is null",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 } else {
+                    // Hide progress bar
+                    progressBar.visibility = View.GONE
+
                     // If sign up fails, display a message to the user
                     Toast.makeText(
                         this@RegisterActivity,
