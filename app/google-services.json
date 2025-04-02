@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1017079802816",
+    "project_id": "kilemilek-8383a",
+    "storage_bucket": "kilemilek-8383a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1017079802816:android:c6d14d82e078a4dc0c3625",
+        "android_client_info": {
+          "package_name": "com.example.kilemilek"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDoMaKVpVA9JVcZLtspVM8SchecDbvIdgk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
