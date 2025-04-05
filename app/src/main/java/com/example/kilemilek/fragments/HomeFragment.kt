@@ -12,7 +12,9 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.kilemilek.R
+import com.example.kilemilek.activities.ActiveGamesActivity
 import com.example.kilemilek.activities.GameActivity
+import com.example.kilemilek.activities.SelectFriendActivity
 import com.example.kilemilek.models.GameRequestModel
 import com.google.android.material.button.MaterialButton
 import com.google.firebase.auth.FirebaseAuth
@@ -29,6 +31,7 @@ class HomeFragment : Fragment() {
     private lateinit var finishedGamesRecyclerView: RecyclerView
     private lateinit var emptyActiveGamesText: TextView
     private lateinit var emptyFinishedGamesText: TextView
+    private lateinit var viewAllActiveGamesButton: Button
 
     private lateinit var db: FirebaseFirestore
     private var currentUserId: String = ""
@@ -56,6 +59,7 @@ class HomeFragment : Fragment() {
         finishedGamesRecyclerView = view.findViewById(R.id.finished_games_recycler_view)
         emptyActiveGamesText = view.findViewById(R.id.empty_active_games_text)
         emptyFinishedGamesText = view.findViewById(R.id.empty_finished_games_text)
+        viewAllActiveGamesButton = view.findViewById(R.id.view_all_active_games_button)
 
         // Set welcome text
         currentUser?.let {
@@ -68,8 +72,16 @@ class HomeFragment : Fragment() {
 
         // Set up new game button
         newGameButton.setOnClickListener {
-            // For now, just show a toast
-            Toast.makeText(context, "To start a new game, invite a friend from the Friends tab", Toast.LENGTH_LONG).show()
+            // Launch SelectFriendActivity to choose a friend to play with
+            val intent = Intent(activity, SelectFriendActivity::class.java)
+            startActivity(intent)
+        }
+
+        // Set up view all active games button
+        viewAllActiveGamesButton.setOnClickListener {
+            // Launch ActiveGamesActivity to see all active games
+            val intent = Intent(activity, ActiveGamesActivity::class.java)
+            startActivity(intent)
         }
 
         // Load active game requests and game requests sent to the user
@@ -116,8 +128,11 @@ class HomeFragment : Fragment() {
                         { -it.lastUpdatedAt }
                     ))
 
+                    // Limit to 3 games for the preview
+                    val previewGames = activeGames.take(3)
+
                     // Set adapter
-                    activeGamesRecyclerView.adapter = GameAdapter(requireContext(), activeGames, true) { gameId ->
+                    activeGamesRecyclerView.adapter = GameAdapter(requireContext(), previewGames, true) { gameId ->
                         // Open game activity when clicked
                         val intent = Intent(activity, GameActivity::class.java)
                         intent.putExtra("GAME_ID", gameId)
@@ -138,7 +153,6 @@ class HomeFragment : Fragment() {
         // Query for completed game requests
         db.collection("game_requests")
             .whereEqualTo("status", "completed")
-            .whereIn("status", listOf("completed"))
             .get()
             .addOnSuccessListener { documents ->
                 val finishedGames = mutableListOf<GameRequestModel>()
@@ -159,8 +173,11 @@ class HomeFragment : Fragment() {
                     // Sort by last updated time (most recent first)
                     finishedGames.sortByDescending { it.lastUpdatedAt }
 
+                    // Limit to 3 games for the preview
+                    val previewGames = finishedGames.take(3)
+
                     // Set adapter
-                    finishedGamesRecyclerView.adapter = GameAdapter(requireContext(), finishedGames, false) { gameId ->
+                    finishedGamesRecyclerView.adapter = GameAdapter(requireContext(), previewGames, false) { gameId ->
                         // Open game activity in view mode when clicked
                         val intent = Intent(activity, GameActivity::class.java)
                         intent.putExtra("GAME_ID", gameId)
