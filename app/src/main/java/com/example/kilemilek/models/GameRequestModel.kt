@@ -18,6 +18,7 @@ data class GameData(
     val boardState: Map<String, String> = emptyMap(), // Map of "row,col" to letter
     val playerTurn: String = "", // ID of player whose turn it is
     val playerScores: Map<String, Int> = emptyMap(), // Player ID to score
+    val playerLetters: Map<String, List<String>> = emptyMap(), // Player ID to their letters
     val lastMove: LastMove = LastMove(),
     val gameBoard: List<List<Int>> = emptyList() // Optional: store the board layout
 )

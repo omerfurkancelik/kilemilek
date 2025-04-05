@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipDescription
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -21,6 +22,7 @@ import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.content.res.ResourcesCompat
 import com.example.kilemilek.objects.LetterDistribution
 import com.example.kilemilek.R
 import com.example.kilemilek.models.GameData
@@ -50,6 +52,8 @@ class GameActivity : AppCompatActivity() {
     private lateinit var db: FirebaseFirestore
     private lateinit var currentUserId: String
     private lateinit var shuffleButton: Button
+
+    private lateinit var gameFont: Typeface
 
     // Letters in the player's rack
     private val playerLetters = mutableListOf<Char>()
@@ -95,6 +99,11 @@ class GameActivity : AppCompatActivity() {
         shuffleButton.setOnClickListener {
             shuffleLetters()
         }
+
+        gameFont = ResourcesCompat.getFont(this, R.font.roboto_medium) ?: Typeface.DEFAULT
+
+        // Then when creating letter tiles
+
 
         shuffleButton.tooltipText = "Shuffle Letters"
         withdrawButton.tooltipText = "Withdraw Letters"
@@ -147,7 +156,8 @@ class GameActivity : AppCompatActivity() {
         // Update the letter rack UI
         updateLetterRackUI()
 
-        //Toast.makeText(this, "Letters withdrawn", Toast.LENGTH_SHORT).show()
+        // Update Firebase with new letters
+        updatePlayerLettersInFirebase()
     }
 
     private fun loadGameData() {
@@ -273,28 +283,38 @@ class GameActivity : AppCompatActivity() {
     }
 
     private fun loadPlayerLetters() {
-        // Check if player already has letters assigned
-        val playerLettersKey = "${gameId}_${currentUserId}_letters"
-        val sharedPreferences = getSharedPreferences("kilemilek_game", MODE_PRIVATE)
-        val savedLetters = sharedPreferences.getString(playerLettersKey, null)
+        // Check if player already has letters assigned in Firebase
+        val letters = gameRequest.gameData.playerLetters[currentUserId]
 
-        if (savedLetters != null && savedLetters.isNotEmpty()) {
-            // Player already has letters assigned
+        if (letters != null && letters.isNotEmpty()) {
+            // Player already has letters assigned in Firebase
             playerLetters.clear()
-            playerLetters.addAll(savedLetters.toList())
+            playerLetters.addAll(letters.map { it[0] }) // Convert strings back to chars
         } else {
             // Assign new letters
             playerLetters.clear()
             playerLetters.addAll(LetterDistribution.drawLetters(7))
 
-            // Save assigned letters
-            sharedPreferences.edit()
-                .putString(playerLettersKey, playerLetters.joinToString(""))
-                .apply()
+            // Save assigned letters to Firebase
+            updatePlayerLettersInFirebase()
         }
 
         // Update the letter rack UI
         updateLetterRackUI()
+    }
+
+    private fun updatePlayerLettersInFirebase() {
+        // Create a map of all players' letters
+        val updatedLettersMap = gameRequest.gameData.playerLetters.toMutableMap()
+        // Update the current player's letters
+        updatedLettersMap[currentUserId] = playerLetters.map { it.toString() }
+
+        // Update Firestore
+        db.collection("game_requests").document(gameId)
+            .update("gameData.playerLetters", updatedLettersMap)
+            .addOnFailureListener { exception ->
+                Toast.makeText(this, "Error saving letters: ${exception.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -362,6 +382,8 @@ class GameActivity : AppCompatActivity() {
             elevation = TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics
             )
+
+
             cardElevation = TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics
             )
@@ -395,9 +417,15 @@ class GameActivity : AppCompatActivity() {
         // Letter display
         val letterText = TextView(this).apply {
             text = letter.toString()
-            textSize = 20f
+
+            textSize = 15f
             setTextColor(Color.parseColor("#212121")) // Dark gray for letter text
             textAlignment = View.TEXT_ALIGNMENT_CENTER
+
+            // Add these lines to ensure consistent font rendering
+
+            typeface = Typeface.DEFAULT_BOLD
+            setTypeface(typeface, Typeface.BOLD)
 
             // Center the text
             layoutParams = ConstraintLayout.LayoutParams(
@@ -410,6 +438,9 @@ class GameActivity : AppCompatActivity() {
                 bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
             }
         }
+
+        letterText.typeface = gameFont
+        letterText.setTypeface(letterText.typeface, Typeface.BOLD)
 
         // Letter value
         val valueText = TextView(this).apply {
@@ -437,6 +468,7 @@ class GameActivity : AppCompatActivity() {
         letterLayout.addView(letterText)
         letterLayout.addView(valueText)
         letterCard.addView(letterLayout)
+
 
         return letterCard
     }
@@ -660,6 +692,9 @@ class GameActivity : AppCompatActivity() {
 
                                     // Update UI
                                     updateLetterRackUI()
+
+                                    // Update Firebase
+                                    updatePlayerLettersInFirebase()
                                 }
                             }
                         } else {
@@ -669,10 +704,18 @@ class GameActivity : AppCompatActivity() {
                                 if (dragSourceIsBoard && dragSourcePosition != null) {
                                     currentTurnLetters.remove(dragSourcePosition)
                                     gameBoardView.clearLetter(dragSourcePosition!!.first, dragSourcePosition!!.second)
+
+                                    // Add to player rack only if it came from the board
+                                    playerLetters.add(currentDraggedLetter!!)
+
+                                    // Update Firebase with the changed letters
+                                    updatePlayerLettersInFirebase()
+                                } else {
+                                    // If the letter was already in the rack, don't add it again
+                                    // Just make it visible again
+                                    currentDraggedView?.visibility = View.VISIBLE
                                 }
 
-                                // Add to player rack
-                                playerLetters.add(currentDraggedLetter!!)
                                 view.post {
                                     updateLetterRackUI()
                                 }
@@ -690,10 +733,42 @@ class GameActivity : AppCompatActivity() {
                     true
                 }
                 DragEvent.ACTION_DRAG_ENDED -> {
-                    if (!event.result && !dragSourceIsBoard) {
-                        // Make sure letter is visible again if drag ended outside any target
-                        currentDraggedView?.visibility = View.VISIBLE
+                    try {
+                        // If drag ended without drop on a valid target
+                        if (!event.result) {
+                            if (!dragSourceIsBoard) {
+                                // Letter was from rack, make it visible again
+                                currentDraggedView?.visibility = View.VISIBLE
+                            } else {
+                                // Letter was from board and dropped outside valid targets
+                                // Remove from board first
+                                dragSourcePosition?.let { (sourceRow, sourceCol) ->
+                                    gameBoardView.clearLetter(sourceRow, sourceCol)
+                                    currentTurnLetters.remove(Pair(sourceRow, sourceCol))
+                                }
+
+                                // Then add to player's rack
+                                currentDraggedLetter?.let {
+                                    playerLetters.add(it)
+
+                                    // Update Firebase with the changed letters
+                                    updatePlayerLettersInFirebase()
+
+                                    updateLetterRackUI()
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("GameActivity", "Error in drag ended: ${e.message}")
+                        e.printStackTrace()
                     }
+
+                    // Reset drag state
+                    currentDraggedLetter = null
+                    currentDraggedView = null
+                    dragSourceIsBoard = false
+                    dragSourcePosition = null
+
                     true
                 }
                 else -> true
@@ -704,7 +779,9 @@ class GameActivity : AppCompatActivity() {
     private fun shuffleLetters() {
         playerLetters.shuffle()
         updateLetterRackUI()
-        //Toast.makeText(this, "Letters shuffled", Toast.LENGTH_SHORT).show()
+
+        // Update Firebase with new order
+        updatePlayerLettersInFirebase()
     }
 
     /**
@@ -751,6 +828,9 @@ class GameActivity : AppCompatActivity() {
 
         // Update letter rack UI
         updateLetterRackUI()
+
+        // Update Firebase with updated letters
+        updatePlayerLettersInFirebase()
     }
 
     private fun isAdjacentToExistingLetter(row: Int, col: Int): Boolean {
@@ -961,11 +1041,21 @@ class GameActivity : AppCompatActivity() {
         // Determine next player's turn
         val opponentId = if (gameRequest.senderId == currentUserId) gameRequest.receiverId else gameRequest.senderId
 
+        // Draw new letters to fill the rack
+        val newLetters = LetterDistribution.drawLetters(7 - playerLetters.size)
+        playerLetters.addAll(newLetters)
+
+        // Create a map of all players' letters
+        val updatedLettersMap = gameRequest.gameData.playerLetters.toMutableMap()
+        // Update the current player's letters
+        updatedLettersMap[currentUserId] = playerLetters.map { it.toString() }
+
         // Update game data
         val updatedGameData = GameData(
             boardState = boardStateMap,
             playerTurn = opponentId, // Switch turn to opponent
             playerScores = playerScores,
+            playerLetters = updatedLettersMap,
             lastMove = LastMove(
                 playerId = currentUserId,
                 word = currentTurnLetters.entries.sortedBy { it.key.first * 100 + it.key.second }
@@ -985,16 +1075,6 @@ class GameActivity : AppCompatActivity() {
             )
             .addOnSuccessListener {
                 Toast.makeText(this, "Play submitted! Your score: +$finalScore", Toast.LENGTH_SHORT).show()
-
-                // Draw new letters to fill the rack
-                val newLetters = LetterDistribution.drawLetters(7 - playerLetters.size)
-                playerLetters.addAll(newLetters)
-
-                // Save updated player letters
-                val playerLettersKey = "${gameId}_${currentUserId}_letters"
-                getSharedPreferences("kilemilek_game", MODE_PRIVATE).edit()
-                    .putString(playerLettersKey, playerLetters.joinToString(""))
-                    .apply()
 
                 // Clear current turn letters as they're now part of the board
                 currentTurnLetters.clear()
