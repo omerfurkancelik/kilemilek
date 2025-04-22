@@ -518,6 +518,8 @@ class GameActivity : AppCompatActivity() {
                             col in 0 until GameBoardMatrix.BOARD_SIZE &&
                             currentDraggedLetter != null) {
 
+                            Toast.makeText(this,isAdjacentToExistingLetter(row,col).toString(),Toast.LENGTH_SHORT).show()
+
                             // Check if the cell is already occupied
                             if (placedLetters.containsKey(Pair(row, col)) ||
                                 currentTurnLetters.containsKey(Pair(row, col))) {
@@ -531,6 +533,7 @@ class GameActivity : AppCompatActivity() {
                                         gameBoardView.placeLetter(sourceRow, sourceCol, currentDraggedLetter!!)
                                         currentTurnLetters[Pair(sourceRow, sourceCol)] = currentDraggedLetter!!
                                     }
+                                    Toast.makeText(this,currentTurnLetters.toString(),Toast.LENGTH_SHORT).show()
                                 }
                             } else {
                                 // Check if this is first move in the game
@@ -555,9 +558,9 @@ class GameActivity : AppCompatActivity() {
 
                                         return@setOnDragListener true
                                     }
-                                } else if (!isFirstMoveInGame && !currentTurnLetters.isEmpty() && !isAdjacentToExistingLetter(row, col)) {
+                                } else if (!isFirstMoveInGame && currentTurnLetters.isNotEmpty() && !isAdjacentToExistingLetter(row, col)) {
                                     // After first move, letters must be adjacent to existing letters
-                                    //Toast.makeText(this, "Letters must be adjacent to existing letters", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(this, "Letters must be adjacent to existing letters", Toast.LENGTH_SHORT).show()
 
                                     // Return letter to rack
                                     if (!dragSourceIsBoard) {
