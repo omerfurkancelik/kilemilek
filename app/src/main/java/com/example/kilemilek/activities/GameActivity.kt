@@ -100,7 +100,7 @@ class GameActivity : AppCompatActivity() {
             shuffleLetters()
         }
 
-        gameFont = ResourcesCompat.getFont(this, R.font.roboto_medium) ?: Typeface.DEFAULT
+        gameFont = ResourcesCompat.getFont(this, R.font.opensans) ?: Typeface.DEFAULT
 
         // Then when creating letter tiles
 
@@ -396,7 +396,7 @@ class GameActivity : AppCompatActivity() {
             }
 
             val cardSize = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 40f, resources.displayMetrics
+                TypedValue.COMPLEX_UNIT_DIP, 45f, resources.displayMetrics
             ).toInt()
 
             layoutParams = LinearLayout.LayoutParams(cardSize, cardSize).apply {
@@ -446,7 +446,9 @@ class GameActivity : AppCompatActivity() {
         val valueText = TextView(this).apply {
             text = LetterDistribution.getLetterValue(letter).toString()
             textSize = 10f
-            setTextColor(Color.parseColor("#757575")) // Medium gray for value
+            setTextColor(Color.parseColor("#757575"))
+
+
 
             // Position at bottom right
             layoutParams = ConstraintLayout.LayoutParams(
@@ -833,82 +835,78 @@ class GameActivity : AppCompatActivity() {
         updatePlayerLettersInFirebase()
     }
 
+
     private fun isAdjacentToExistingLetter(row: Int, col: Int): Boolean {
-        // If this is the very first letter being placed in the turn
-        if (currentTurnLetters.isEmpty()) {
-            // Check if the position is adjacent to any existing letter from previous turns
-            val positions = listOf(
-                Pair(row - 1, col), // Above
-                Pair(row + 1, col), // Below
-                Pair(row, col - 1), // Left
-                Pair(row, col + 1)  // Right
-            )
+        // Check adjacency to any letter on the board (from previous turns)
+        val adjacentPositions = listOf(
+            Pair(row - 1, col), // Above
+            Pair(row + 1, col), // Below
+            Pair(row, col - 1), // Left
+            Pair(row, col + 1)  // Right
+        )
 
-            for (pos in positions) {
-                // Only check letters from previous turns (placedLetters)
-                if (placedLetters.containsKey(pos)) {
-                    return true
-                }
-            }
-
-            return false
-        } else {
-            // If we're placing subsequent letters in the same turn,
-            // they must be adjacent to another letter placed in this turn
-            // and they must form a straight line
-
-            // Get the positions of all currently placed letters in this turn
-            val currentPositions = currentTurnLetters.keys.toList()
-
-            // Check if this is the second letter being placed
-            if (currentTurnLetters.size == 1) {
-                val firstPos = currentPositions[0]
-
-                // Check if the new position is adjacent to the first letter
-                return (
-                        (row == firstPos.first && (col == firstPos.second - 1 || col == firstPos.second + 1)) || // Same row, adjacent column
-                                (col == firstPos.second && (row == firstPos.first - 1 || row == firstPos.first + 1))     // Same column, adjacent row
-                        )
-            } else {
-                // If more than one letter has been placed, determine the orientation
-                val rows = currentPositions.map { it.first }.toSet()
-                val cols = currentPositions.map { it.second }.toSet()
-
-                if (rows.size == 1) {
-                    // Letters are in a horizontal line
-                    val fixedRow = rows.first()
-
-                    // New letter must be in the same row
-                    if (row != fixedRow) {
-                        return false
-                    }
-
-                    // Check if the new position is adjacent to the existing line
-                    val minCol = cols.minOrNull()!!
-                    val maxCol = cols.maxOrNull()!!
-
-                    return (col == minCol - 1 || col == maxCol + 1)
-                } else if (cols.size == 1) {
-                    // Letters are in a vertical line
-                    val fixedCol = cols.first()
-
-                    // New letter must be in the same column
-                    if (col != fixedCol) {
-                        return false
-                    }
-
-                    // Check if the new position is adjacent to the existing line
-                    val minRow = rows.minOrNull()!!
-                    val maxRow = rows.maxOrNull()!!
-
-                    return (row == minRow - 1 || row == maxRow + 1)
-                } else {
-                    // Letters are not in a straight line, which should not happen
-                    // because we validate this elsewhere
-                    return false
-                }
+        // Check if adjacent to any existing letter from previous turns
+        var isAdjacentToExistingLetter = false
+        for (pos in adjacentPositions) {
+            if (placedLetters.containsKey(pos)) {
+                isAdjacentToExistingLetter = true
+                break
             }
         }
+
+        // Check if adjacent to any letter placed in the current turn
+        var isAdjacentToCurrentTurnLetter = false
+        for (pos in adjacentPositions) {
+            if (currentTurnLetters.containsKey(pos)) {
+                isAdjacentToCurrentTurnLetter = true
+                break
+            }
+        }
+
+        // Must be adjacent to at least one letter (unless it's the first move)
+        if (!isAdjacentToExistingLetter && !isAdjacentToCurrentTurnLetter && !isFirstMoveInGame) {
+            return false
+        }
+
+        // If we have more than one letter placed in this turn, enforce direction
+        if (currentTurnLetters.size > 1) {
+            val positions = currentTurnLetters.keys.toList()
+            val rows = positions.map { it.first }.toSet()
+            val cols = positions.map { it.second }.toSet()
+
+            // Horizontal placement (all in one row)
+            if (rows.size == 1) {
+                // New letter must be in the same row
+                if (row != rows.first()) {
+                    return false
+                }
+
+                // Find the current min/max columns
+                val minCol = cols.minOrNull()!!
+                val maxCol = cols.maxOrNull()!!
+
+                // New letter must extend the line
+                return (col == minCol - 1 || col == maxCol + 1)
+            }
+
+            // Vertical placement (all in one column)
+            if (cols.size == 1) {
+                // New letter must be in the same column
+                if (col != cols.first()) {
+                    return false
+                }
+
+                // Find the current min/max rows
+                val minRow = rows.minOrNull()!!
+                val maxRow = rows.maxOrNull()!!
+
+                // New letter must extend the line
+                return (row == minRow - 1 || row == maxRow + 1)
+            }
+        }
+
+        // If we only have one letter placed so far, any adjacent position is valid
+        return isAdjacentToExistingLetter || isAdjacentToCurrentTurnLetter || isFirstMoveInGame
     }
 
     private fun validateAndSubmitPlay() {
