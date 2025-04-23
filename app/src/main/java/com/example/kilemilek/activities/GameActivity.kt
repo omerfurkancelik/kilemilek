@@ -488,7 +488,7 @@ class GameActivity : AppCompatActivity() {
                     true
 
                 DragEvent.ACTION_DROP -> {
-                    // 1) Sıra sende değilse deneme amaçlı drop'a izin ver, ama sadece dene
+                    // 1) Sıra sende değilse deneme amaçlı izin ver
                     val isPlayerTurn = gameRequest.gameData.playerTurn == currentUserId
                     if (!isPlayerTurn) {
                         Toast.makeText(
@@ -504,31 +504,33 @@ class GameActivity : AppCompatActivity() {
                     val col = (event.x / cellSize).toInt()
                     val row = (event.y / cellSize).toInt()
 
+                    // 3) Geçerli satır/sütun + harf verisi yoksa geri göster
                     if (row !in 0 until GameBoardMatrix.BOARD_SIZE ||
                         col !in 0 until GameBoardMatrix.BOARD_SIZE ||
-                        currentDraggedLetter == null) {
-                        // geçersizse geri göster
+                        currentDraggedLetter == null
+                    ) {
                         currentDraggedView?.visibility = View.VISIBLE
                         return@setOnDragListener true
                     }
 
-                    // 3) Hücre doluysa geri döndür
                     val pos = Pair(row, col)
+
+                    // 4) Hücre doluysa geri göster
                     if (placedLetters.containsKey(pos) || currentTurnLetters.containsKey(pos)) {
                         currentDraggedView?.visibility = View.VISIBLE
                         return@setOnDragListener true
                     }
 
-                    // 4) İlk hamle mi? Merkez kontrolü
-                    if (isFirstMoveInGame) {
+                    // 5) İlk hamle ve henüz bir harf yoksa: sadece merkez izinli
+                    if (isFirstMoveInGame && currentTurnLetters.isEmpty()) {
                         val center = GameBoardMatrix.BOARD_SIZE / 2
                         if (row != center || col != center) {
                             currentDraggedView?.visibility = View.VISIBLE
                             return@setOnDragListener true
                         }
                     }
-                    // 5) Diğer hamlelerde mutlaka komşu olmalı
-                    else if (!isAdjacentToExistingLetter(row, col)) {
+                    // 6) Diğer turlarda her drop anında komşu kontrolü yap
+                    else if (!isFirstMoveInGame && !isAdjacentToExistingLetter(row, col)) {
                         Toast.makeText(
                             this,
                             "Letters must be adjacent to existing letters",
@@ -538,11 +540,11 @@ class GameActivity : AppCompatActivity() {
                         return@setOnDragListener true
                     }
 
-                    // 6) Yerleştir
+                    // 7) Drop’u kabul et, harfi koy
                     gameBoardView.placeLetter(row, col, currentDraggedLetter!!)
                     currentTurnLetters[pos] = currentDraggedLetter!!
 
-                    // 7) Rack’ten kaldır (sadece senin sırasıysa)
+                    // 8) Sıra sende ve rack’ten gelen harfse rack’ten çıkar
                     if (isPlayerTurn && !dragSourceIsBoard) {
                         playerLetters.remove(currentDraggedLetter)
                         view.postDelayed({ updateLetterRackUI() }, 100)
@@ -552,7 +554,7 @@ class GameActivity : AppCompatActivity() {
                 }
 
                 DragEvent.ACTION_DRAG_ENDED -> {
-                    // Drop gerçekleşmediyse rack’e geri koy
+                    // Başarısız drop’ta rack’e geri dön
                     if (!event.result) {
                         currentDraggedView?.visibility = View.VISIBLE
                     }
@@ -627,26 +629,22 @@ class GameActivity : AppCompatActivity() {
 
 
 
+
+    /** Mevcut ya da önceki turlardaki harflerin birine komşu mu? */
     private fun isAdjacentToExistingLetter(row: Int, col: Int): Boolean {
-
-        if (isFirstMoveInGame) {
-            val center = GameBoardMatrix.BOARD_SIZE / 2
-            return row == center && col == center
-        }
-
         val adjacent = listOf(
             Pair(row - 1, col),
             Pair(row + 1, col),
             Pair(row, col - 1),
             Pair(row, col + 1)
         )
-
-
         return adjacent.any { placedLetters.containsKey(it) || currentTurnLetters.containsKey(it) }
     }
 
 
 
+
+    /** "Oyna" butonuna basıldığında tüm kuralları bir arada denetler */
     private fun validateAndSubmitPlay() {
         if (currentTurnLetters.isEmpty()) {
             Toast.makeText(this, "No letters placed on the board", Toast.LENGTH_SHORT).show()
@@ -660,6 +658,7 @@ class GameActivity : AppCompatActivity() {
             Toast.makeText(this, "Letters must be contiguous (no gaps)", Toast.LENGTH_SHORT).show()
             return
         }
+        // İlk hamle: mutlaka bir harf merkezde olmalı
         if (isFirstMoveInGame) {
             val center = Pair(GameBoardMatrix.BOARD_SIZE / 2, GameBoardMatrix.BOARD_SIZE / 2)
             if (!currentTurnLetters.containsKey(center)) {
@@ -671,9 +670,9 @@ class GameActivity : AppCompatActivity() {
                 return
             }
         } else {
-
+            // Sonraki hamleler: en az bir harf eski harflerle komşu olmalı
             val connects = currentTurnLetters.keys.any { (r, c) ->
-                listOf(Pair(r-1,c), Pair(r+1,c), Pair(r,c-1), Pair(r,c+1))
+                listOf(Pair(r - 1, c), Pair(r + 1, c), Pair(r, c - 1), Pair(r, c + 1))
                     .any { placedLetters.containsKey(it) }
             }
             if (!connects) {
