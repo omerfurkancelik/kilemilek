@@ -2,4 +2,13 @@
     <string name="app_name">kilemilek</string>
     <!-- TODO: Remove or change this placeholder text -->
     <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="option_2min">2 Minutes</string>
+    <string name="option_5min">5 Minutes</string>
+    <string name="option_12hour">12 Hour</string>
+    <string name="option_24hour">24 Hour</string>
+    <string name="continue_button_text">Devam Et</string>
+    <string name="shuffle_button_desc">Shuffle letters</string>
+    <string name="withdraw_button_desc">Withdraw letters</string>
+    <string name="time_remaining">Remaining Time: --:--</string>
+
 </resources>

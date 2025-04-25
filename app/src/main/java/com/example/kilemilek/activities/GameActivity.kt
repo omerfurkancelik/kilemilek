@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.os.CountDownTimer
 import android.util.Log
 import android.util.TypedValue
 import android.view.DragEvent
@@ -32,7 +33,6 @@ import com.example.kilemilek.objects.GameBoardMatrix
 import com.example.kilemilek.views.GameBoardView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import de.hdodenhof.circleimageview.CircleImageView
 import java.util.*
 
 class GameActivity : AppCompatActivity() {
@@ -46,6 +46,7 @@ class GameActivity : AppCompatActivity() {
     private lateinit var letterRackLayout: LinearLayout
     private lateinit var playButton: Button
     private lateinit var withdrawButton: Button
+    private lateinit var timeRemainingTextView: TextView
 
     private lateinit var gameId: String
     private lateinit var gameRequest: GameRequestModel
@@ -54,6 +55,11 @@ class GameActivity : AppCompatActivity() {
     private lateinit var shuffleButton: Button
 
     private lateinit var gameFont: Typeface
+
+    // Zaman takibi için değişkenler
+    private var countDownTimer: CountDownTimer? = null
+    private var gameTimeLimit: Long = 0
+    private var gameTimeType: String = ""
 
     // Letters in the player's rack
     private val playerLetters = mutableListOf<Char>()
@@ -95,15 +101,29 @@ class GameActivity : AppCompatActivity() {
         withdrawButton = findViewById(R.id.withdraw_button)
         shuffleButton = findViewById(R.id.shuffle_button)
 
+        // Dinamik olarak time_remaining_text oluştur veya bul
+        try {
+            timeRemainingTextView = findViewById(R.id.time_remaining_text)
+        } catch (e: Exception) {
+            // Create dynamically if not found
+            timeRemainingTextView = TextView(this).apply {
+                id = View.generateViewId()
+                textSize = 16f
+                setTextColor(Color.parseColor("#E53935"))
+                text = "Kalan Süre: --:--"
+            }
+
+            // Oyun bilgi kartına ekle
+            val gameInfoCard = findViewById<CardView>(R.id.game_info_card)
+            val contentLayout = gameInfoCard.getChildAt(0) as ViewGroup
+            contentLayout.addView(timeRemainingTextView)
+        }
 
         shuffleButton.setOnClickListener {
             shuffleLetters()
         }
 
         gameFont = ResourcesCompat.getFont(this, R.font.opensans) ?: Typeface.DEFAULT
-
-        // Then when creating letter tiles
-
 
         shuffleButton.tooltipText = "Shuffle Letters"
         withdrawButton.tooltipText = "Withdraw Letters"
@@ -178,6 +198,15 @@ class GameActivity : AppCompatActivity() {
                     // Determine if this is the first move in the game
                     isFirstMoveInGame = gameRequest.gameData.boardState.isEmpty()
 
+                    // Get time limit information
+                    gameTimeLimit = gameRequest.gameData.timeLimit
+                    gameTimeType = gameRequest.gameData.timeType
+
+                    // Initialize timer if needed
+                    if (gameTimeLimit > 0) {
+                        startCountdownTimer()
+                    }
+
                     // Update UI
                     updateGameUI()
 
@@ -192,6 +221,100 @@ class GameActivity : AppCompatActivity() {
                 Toast.makeText(this, "Error loading game: ${exception.message}", Toast.LENGTH_SHORT).show()
                 finish()
             }
+    }
+
+    private fun startCountdownTimer() {
+        // Calculate remaining time
+        val currentTime = System.currentTimeMillis()
+
+        // Eğer moveDeadline varsa ve geçerliyse onu kullan, yoksa yeni oluştur
+        val deadline = if (gameRequest.moveDeadline > currentTime) {
+            gameRequest.moveDeadline
+        } else {
+            // Oyun türüne göre süre belirle
+            currentTime + gameTimeLimit
+        }
+
+        val remainingTime = deadline - currentTime
+
+        if (remainingTime <= 0) {
+            // Time is already up
+            handleTimeUp()
+            return
+        }
+
+        // Start countdown
+        countDownTimer?.cancel() // Önce mevcut sayacı iptal et
+        countDownTimer = object : CountDownTimer(remainingTime, 1000) {
+            override fun onTick(millisUntilFinished: Long) {
+                updateTimeRemainingText(millisUntilFinished)
+            }
+
+            override fun onFinish() {
+                handleTimeUp()
+            }
+        }.start()
+    }
+
+    private fun updateTimeRemainingText(millisUntilFinished: Long) {
+        // Format based on time type
+        val displayText = when {
+            gameTimeType.startsWith("QUICK") -> {
+                // Short format for minutes and seconds
+                val minutes = millisUntilFinished / (60 * 1000)
+                val seconds = (millisUntilFinished % (60 * 1000)) / 1000
+                String.format("Kalan Süre: %02d:%02d", minutes, seconds)
+            }
+            gameTimeType.startsWith("EXTENDED") -> {
+                // Longer format for hours and minutes
+                val hours = millisUntilFinished / (60 * 60 * 1000)
+                val minutes = (millisUntilFinished % (60 * 60 * 1000)) / (60 * 1000)
+                String.format("Kalan Süre: %02d saat %02d dk.", hours, minutes)
+            }
+            else -> {
+                "Kalan Süre: --:--"
+            }
+        }
+
+        timeRemainingTextView.text = displayText
+    }
+
+    private fun handleTimeUp() {
+        // Show time up message
+        timeRemainingTextView.text = "Süre doldu!"
+
+        // Eğer bu kullanıcının sırası ise, otomatik olarak oyunu kaybet
+        if (gameRequest.gameData.playerTurn == currentUserId) {
+            // Oyun durumunu güncelle
+            val opponentId = if (gameRequest.senderId == currentUserId)
+                gameRequest.receiverId
+            else
+                gameRequest.senderId
+
+            // Rakibin puanına bir bonus ekle
+            val playerScores = gameRequest.gameData.playerScores.toMutableMap()
+            val opponentScore = playerScores[opponentId] ?: 0
+            playerScores[opponentId] = opponentScore + 15 // 15 puanlık bonus
+
+            db.collection("game_requests").document(gameId)
+                .update(
+                    mapOf(
+                        "status" to "completed",
+                        "gameData.playerScores" to playerScores,
+                        "winnerId" to opponentId,
+                        "lastUpdatedAt" to System.currentTimeMillis()
+                    )
+                )
+                .addOnSuccessListener {
+                    Toast.makeText(this, "Süre doldu! Oyunu kaybettiniz.", Toast.LENGTH_LONG).show()
+                    finish()
+                }
+                .addOnFailureListener { e ->
+                    Log.e("GameActivity", "Error updating game after timeout: ${e.message}")
+                    Toast.makeText(this, "Oyunu sonlandırırken hata: ${e.message}",
+                        Toast.LENGTH_SHORT).show()
+                }
+        }
     }
 
     private fun updateGameUI() {
@@ -217,6 +340,39 @@ class GameActivity : AppCompatActivity() {
         // Set remaining letters count
         val remainingCount = LetterDistribution.getRemainingLetterCount()
         remainingLettersTextView.text = "Remaining letters: $remainingCount"
+
+        // Display time info if available
+        if (gameTimeLimit > 0) {
+            val gameType = when (gameTimeType) {
+                "QUICK_2MIN" -> "Fast Game (2 min)"
+                "QUICK_5MIN" -> "Fast Game (5 min)"
+                "EXTENDED_12HOUR" -> "Extended Game (12 hours)"
+                "EXTENDED_24HOUR" -> "Extended Game (24 hours)"
+                else -> ""
+            }
+
+            // Ensure time remaining textview is visible
+            timeRemainingTextView.visibility = View.VISIBLE
+
+            // Game type bilgisini göster
+            val gameTypeTextView = TextView(this).apply {
+                textSize = 14f
+                setTextColor(Color.parseColor("#E53935"))
+                text = gameType
+                visibility = View.VISIBLE
+            }
+
+            // Ekle veya bilgiyi güncelle
+            val gameInfoCard = findViewById<CardView>(R.id.game_info_card)
+            val contentLayout = gameInfoCard.getChildAt(0) as ViewGroup
+            if (contentLayout.childCount > 3) {
+                // Game type text view zaten eklenmiş olabilir
+                (contentLayout.getChildAt(3) as? TextView)?.text = gameType
+            } else {
+                // Yeni ekle
+                contentLayout.addView(gameTypeTextView, 3)
+            }
+        }
 
         // Clear the placed letters tracking
         placedLetters.clear()
@@ -448,8 +604,6 @@ class GameActivity : AppCompatActivity() {
             textSize = 10f
             setTextColor(Color.parseColor("#757575"))
 
-
-
             // Position at bottom right
             layoutParams = ConstraintLayout.LayoutParams(
                 ConstraintLayout.LayoutParams.WRAP_CONTENT,
@@ -632,7 +786,7 @@ class GameActivity : AppCompatActivity() {
                     } catch (e: Exception) {
                         Log.e("GameActivity", "Error in drop: ${e.message}")
                         e.printStackTrace()
-                        // Make sure letter is visible again if there was an error
+// Make sure letter is visible again if there was an error
                         if (!dragSourceIsBoard) {
                             currentDraggedView?.visibility = View.VISIBLE
                         } else {
@@ -1007,6 +1161,7 @@ class GameActivity : AppCompatActivity() {
 
         return false
     }
+
     private fun validateAndSubmitPlay() {
         // Validate the current play
         if (currentTurnLetters.isEmpty()) {
@@ -1089,6 +1244,9 @@ class GameActivity : AppCompatActivity() {
     }
 
     private fun submitPlay() {
+        // Cancel the countdown timer when submitting a move
+        countDownTimer?.cancel()
+
         // Create updated board state map (merging existing and new letters)
         val boardStateMap = mutableMapOf<String, String>()
 
@@ -1146,7 +1304,13 @@ class GameActivity : AppCompatActivity() {
         // Update the current player's letters
         updatedLettersMap[currentUserId] = playerLetters.map { it.toString() }
 
-        // Update game data
+        // Şu anki zaman
+        val currentTime = System.currentTimeMillis()
+
+        // Bir sonraki hamle için son tarih hesaplama
+        val newMoveDeadline = currentTime + gameTimeLimit
+
+        // Update game data - preserve time limit settings
         val updatedGameData = GameData(
             boardState = boardStateMap,
             playerTurn = opponentId, // Switch turn to opponent
@@ -1157,8 +1321,10 @@ class GameActivity : AppCompatActivity() {
                 word = currentTurnLetters.entries.sortedBy { it.key.first * 100 + it.key.second }
                     .joinToString("") { it.value.toString() },
                 points = finalScore,
-                timestamp = System.currentTimeMillis()
-            )
+                timestamp = currentTime
+            ),
+            timeLimit = gameTimeLimit,  // Preserve the original time limit
+            timeType = gameTimeType     // Preserve the original time type
         )
 
         // Update Firestore
@@ -1166,7 +1332,8 @@ class GameActivity : AppCompatActivity() {
             .update(
                 mapOf(
                     "gameData" to updatedGameData,
-                    "lastUpdatedAt" to System.currentTimeMillis()
+                    "lastUpdatedAt" to currentTime,
+                    "moveDeadline" to newMoveDeadline
                 )
             )
             .addOnSuccessListener {
@@ -1190,5 +1357,11 @@ class GameActivity : AppCompatActivity() {
             return true
         }
         return super.onOptionsItemSelected(item)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Cancel the countdown timer to avoid memory leaks
+        countDownTimer?.cancel()
     }
 }

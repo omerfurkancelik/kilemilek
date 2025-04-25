@@ -93,7 +93,10 @@ class SelectFriendActivity : AppCompatActivity() {
                 if (friendsList.isEmpty()) {
                     emptyView.visibility = View.VISIBLE
                     recyclerView.visibility = View.GONE
-                } else {
+                    emptyView.text = "No friends found. Add friends to play!"
+                    Toast.makeText(this, "You don't have any friends yet. Please add friends to play.", Toast.LENGTH_LONG).show()
+                }
+                else {
                     emptyView.visibility = View.GONE
                     recyclerView.visibility = View.VISIBLE
 
@@ -121,6 +124,16 @@ class SelectFriendActivity : AppCompatActivity() {
         progressDialog.setCancelable(false)
         progressDialog.show()
 
+        // Intent'ten zaman tipini ve limitini al
+        val timeType = intent.getStringExtra("TIME_TYPE") ?: ""
+        val timeLimit = intent.getLongExtra("TIME_LIMIT", 0L)
+
+        // Şu anki zaman
+        val currentTime = System.currentTimeMillis()
+
+        // Hamle son tarihini belirle
+        val moveDeadline = currentTime + timeLimit
+
         // Create a new game request
         val gameRequest = GameRequestModel(
             senderId = currentUserId,
@@ -130,8 +143,10 @@ class SelectFriendActivity : AppCompatActivity() {
             receiverName = friend.friendName,
             receiverEmail = friend.friendEmail,
             status = "pending",
-            createdAt = System.currentTimeMillis(),
-            lastUpdatedAt = System.currentTimeMillis(),
+            createdAt = currentTime,
+            lastUpdatedAt = currentTime,
+            gameTimeType = timeType,
+            moveDeadline = moveDeadline,
             gameData = GameData(
                 playerTurn = currentUserId,
                 playerScores = mapOf(

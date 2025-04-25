@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.kilemilek.R
 import com.example.kilemilek.activities.ActiveGamesActivity
 import com.example.kilemilek.activities.GameActivity
+import com.example.kilemilek.activities.GameTimeSelectionActivity
 import com.example.kilemilek.activities.SelectFriendActivity
 import com.example.kilemilek.models.GameRequestModel
 import com.google.android.material.button.MaterialButton
@@ -72,9 +73,10 @@ class HomeFragment : Fragment() {
 
         // Set up new game button
         newGameButton.setOnClickListener {
-            // Launch SelectFriendActivity to choose a friend to play with
-            val intent = Intent(activity, SelectFriendActivity::class.java)
+            val intent = Intent(requireContext(), GameTimeSelectionActivity::class.java)
             startActivity(intent)
+
+
         }
 
         // Set up view all active games button

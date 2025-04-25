@@ -1,5 +1,8 @@
 package com.example.kilemilek.models
 
+import com.google.firebase.firestore.IgnoreExtraProperties
+
+@IgnoreExtraProperties
 data class GameRequestModel(
     val id: String = "",
     val senderId: String = "",
@@ -11,7 +14,13 @@ data class GameRequestModel(
     val status: String = "pending", // pending, accepted, rejected, completed
     val createdAt: Long = System.currentTimeMillis(),
     val lastUpdatedAt: Long = System.currentTimeMillis(),
-    val gameData: GameData = GameData()
+    val gameData: GameData = GameData(),
+    val gameTimeType: String = "REGULAR", // "QUICK_2MIN", "QUICK_5MIN", "EXTENDED_12HOUR", "EXTENDED_24HOUR"
+    val moveDeadline: Long = 0, // Milisaniye cinsinden hamle için son tarih
+
+    // Firestore’da bulunup modelde olmayan alanlar artık modelde isteğe bağlı olarak tanımlandı:
+    val matchmakingId: String? = null,
+    val playerIds: List<String>? = null
 )
 
 data class GameData(
@@ -20,7 +29,9 @@ data class GameData(
     val playerScores: Map<String, Int> = emptyMap(), // Player ID to score
     val playerLetters: Map<String, List<String>> = emptyMap(), // Player ID to their letters
     val lastMove: LastMove = LastMove(),
-    val gameBoard: List<List<Int>> = emptyList() // Optional: store the board layout
+    val gameBoard: List<List<Int>> = emptyList(), // Optional: store the board layout
+    val timeLimit: Long = 0,  // Milisaniye cinsinden süre limiti
+    val timeType: String = "" // "QUICK_2MIN", "QUICK_5MIN", "EXTENDED_12HOUR", "EXTENDED_24HOUR"
 )
 
 data class LastMove(

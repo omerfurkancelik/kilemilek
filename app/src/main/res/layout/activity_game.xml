@@ -42,6 +42,16 @@
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
+            <TextView
+                android:id="@+id/countdown_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Time Remaining: 00:00"
+                android:textColor="@color/primary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -91,7 +101,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/game_info_card" />
 
-
+    <!-- Opponent Turn Text -->
     <TextView
         android:id="@+id/opponent_turn_message"
         android:layout_width="match_parent"
@@ -107,7 +117,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/game_board_view" />
 
-    <!-- Letter Rack -->
+    <!-- Letter Rack Section -->
     <androidx.cardview.widget.CardView
         android:id="@+id/letter_rack_card"
         android:layout_width="0dp"
@@ -120,8 +130,7 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center"
+            android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="12dp">
 
@@ -143,19 +152,24 @@
                     android:id="@+id/letter_rack"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-
-                </LinearLayout>
-
-
-
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical" />
             </HorizontalScrollView>
+
+            <!-- ZAMAN burada olacak -->
+            <TextView
+                android:id="@+id/time_remaining_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Kalan Süre: --:--"
+                android:textColor="@color/primary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-    <!-- Buttons Container -->
+    <!-- Buttons -->
     <LinearLayout
         android:id="@+id/buttons_container"
         android:layout_width="0dp"
@@ -166,7 +180,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- Shuffle Button (Icon) -->
+        <!-- Shuffle -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/shuffle_button"
             android:layout_width="56dp"
@@ -177,9 +191,9 @@
             app:iconGravity="textStart"
             app:iconPadding="0dp"
             app:iconTint="@color/white"
-            app:cornerRadius="8dp" />
+            app:cornerRadius="8dp"
+            android:contentDescription="@string/shuffle_button_desc" />
 
-        <!-- Withdraw Button (Icon) -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/withdraw_button"
             android:layout_width="56dp"
@@ -190,9 +204,10 @@
             app:iconGravity="textStart"
             app:iconPadding="0dp"
             app:iconTint="@color/white"
-            app:cornerRadius="8dp" />
+            app:cornerRadius="8dp"
+            android:contentDescription="@string/withdraw_button_desc" />
 
-        <!-- Play Button -->
+        <!-- Play -->
         <Button
             android:id="@+id/play_button"
             android:layout_width="0dp"
@@ -201,9 +216,7 @@
             android:backgroundTint="@color/primary"
             android:text="Play Word"
             android:textAllCaps="false"
-            android:textSize="16sp"
-            app:cornerRadius="8dp" />
-
+            android:textSize="16sp" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
