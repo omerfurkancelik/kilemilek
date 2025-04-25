@@ -1012,139 +1012,13 @@ class GameActivity : AppCompatActivity() {
     }
 
 
-    private fun isAdjacentToExistingLetter(row: Int, col: Int): Boolean {
-        // If no letters have been placed in the current turn yet
-        if (currentTurnLetters.isEmpty()) {
-            // Check if it intersects with or is adjacent to a previously placed letter
-            return isAdjacentOrCrossesExistingWord(row, col)
-        }
-
-        // Positions of letters placed in the current turn
-        val positions = currentTurnLetters.keys.toList()
-
-        // If only one letter has been placed in this turn, direction is not yet determined
-        if (currentTurnLetters.size == 1) {
-            val existingPos = positions[0]
-
-            // The new letter should be placed next to the existing letter (horizontal or vertical)
-            return (
-                    (row == existingPos.first && (col == existingPos.second - 1 || col == existingPos.second + 1)) || // Horizontal
-                            (col == existingPos.second && (row == existingPos.first - 1 || row == existingPos.first + 1))     // Vertical
-                    )
-        }
-
-        // Determine the direction of existing letters (horizontal or vertical)
-        val rows = positions.map { it.first }.toSet()
-        val cols = positions.map { it.second }.toSet()
-
-        // If letters are in a horizontal line (same row)
-        if (rows.size == 1) {
-            val currentRow = rows.first()
-
-            // New letter must be in the same row or can be above/below an existing letter
-            if (row == currentRow) {
-                // Horizontal placement scenario
-                val minCol = cols.minOrNull()!!
-                val maxCol = cols.maxOrNull()!!
-
-                // New letter can be placed to the left or right or between existing letters
-                if (col < minCol - 1 || col > maxCol + 1) {
-                    return false // Too far
-                }
-
-                // If placed between existing letters, there should be no gaps
-                if (col > minCol && col < maxCol) {
-                    for (c in minCol..maxCol) {
-                        if (c != col && !currentTurnLetters.containsKey(Pair(row, c)) && !placedLetters.containsKey(Pair(row, c))) {
-                            return false // Gap exists
-                        }
-                    }
-                }
-
-                return true
-            } else {
-                // Vertical placement scenario - not in the same row, but can be above/below an existing letter
-                // The column of the new letter must match one of the existing letters
-                if (!cols.contains(col)) {
-                    return false
-                }
-
-                // Must be adjacent to existing letters
-                val relevantPositions = listOf(
-                    Pair(row + 1, col), // Below
-                    Pair(row - 1, col)  // Above
-                )
-
-                for (pos in relevantPositions) {
-                    if (currentTurnLetters.containsKey(pos) || placedLetters.containsKey(pos)) {
-                        return true
-                    }
-                }
-
-                return false
-            }
-        }
-
-        // If letters are in a vertical line (same column)
-        if (cols.size == 1) {
-            val currentCol = cols.first()
-
-            // New letter must be in the same column or can be to the left/right of an existing letter
-            if (col == currentCol) {
-                // Vertical placement scenario
-                val minRow = rows.minOrNull()!!
-                val maxRow = rows.maxOrNull()!!
-
-                // New letter can be placed above or below or between existing letters
-                if (row < minRow - 1 || row > maxRow + 1) {
-                    return false // Too far
-                }
-
-                // If placed between existing letters, there should be no gaps
-                if (row > minRow && row < maxRow) {
-                    for (r in minRow..maxRow) {
-                        if (r != row && !currentTurnLetters.containsKey(Pair(r, col)) && !placedLetters.containsKey(Pair(r, col))) {
-                            return false // Gap exists
-                        }
-                    }
-                }
-
-                return true
-            } else {
-                // Horizontal placement scenario - not in the same column, but can be to the left/right of an existing letter
-                // The row of the new letter must match one of the existing letters
-                if (!rows.contains(row)) {
-                    return false
-                }
-
-                // Must be adjacent to existing letters
-                val relevantPositions = listOf(
-                    Pair(row, col + 1), // Right
-                    Pair(row, col - 1)  // Left
-                )
-
-                for (pos in relevantPositions) {
-                    if (currentTurnLetters.containsKey(pos) || placedLetters.containsKey(pos)) {
-                        return true
-                    }
-                }
-
-                return false
-            }
-        }
-
-        // If letters are neither in a horizontal nor vertical line, invalid move
-        return false
-    }
-
-    // Checks if a letter is adjacent to or intersects with an existing word
     private fun isAdjacentOrCrossesExistingWord(row: Int, col: Int): Boolean {
-        // Check if the letter intersects with an existing letter
+        // Check if the letter intersects with an existing letter (for crosswords)
         if (placedLetters.containsKey(Pair(row, col))) {
             return true
         }
 
-        // Check adjacent positions
+        // Check adjacent positions - this already works well
         val adjacentPositions = listOf(
             Pair(row - 1, col), // Above
             Pair(row + 1, col), // Below
@@ -1162,6 +1036,196 @@ class GameActivity : AppCompatActivity() {
         return false
     }
 
+    private fun isAdjacentToExistingLetter(row: Int, col: Int): Boolean {
+        // İlk hamle kontrolü - Tahtanın merkezinden başlamalı
+        if (isFirstMoveInGame) {
+            val centerRow = GameBoardMatrix.BOARD_SIZE / 2
+            val centerCol = GameBoardMatrix.BOARD_SIZE / 2
+
+            // İlk harf merkeze yerleştirilmeli
+            if (currentTurnLetters.isEmpty()) {
+                return row == centerRow && col == centerCol
+            } else {
+                // İlk hamledeki diğer harfler, merkeze ya da ilk harfe bağlı olmalı ve
+                // hepsi aynı yönde (yatay veya dikey) olmalı
+                if (!currentTurnLetters.containsKey(Pair(centerRow, centerCol))) {
+                    return false // İlk hamle merkezi içermeli
+                }
+
+                // İlk hamledeki tüm harflerin aynı yönde olduğundan emin ol
+                val rows = currentTurnLetters.keys.map { it.first }.toSet()
+                val cols = currentTurnLetters.keys.map { it.second }.toSet()
+
+                // Yatay diziliş
+                if (rows.size == 1) {
+                    // Yeni harf de aynı satırda olmalı
+                    if (row != rows.first()) {
+                        return false
+                    }
+
+                    // Sütun aralığını kontrol et - bitişik olmalı
+                    val minCol = cols.minOrNull()!!
+                    val maxCol = cols.maxOrNull()!!
+
+                    return col == minCol - 1 || col == maxCol + 1 || (col > minCol && col < maxCol)
+                }
+
+                // Dikey diziliş
+                if (cols.size == 1) {
+                    // Yeni harf de aynı sütunda olmalı
+                    if (col != cols.first()) {
+                        return false
+                    }
+
+                    // Satır aralığını kontrol et - bitişik olmalı
+                    val minRow = rows.minOrNull()!!
+                    val maxRow = rows.maxOrNull()!!
+
+                    return row == minRow - 1 || row == maxRow + 1 || (row > minRow && row < maxRow)
+                }
+
+                // Hem satır hem sütun değişiyorsa geçersiz hamle
+                return false
+            }
+        }
+
+        // Sonraki hamleler için - tahtadaki en az bir harfe bitişik olmalı
+        if (currentTurnLetters.isEmpty()) {
+            // Tahtadaki herhangi bir harfe bitişik mi kontrol et
+            val adjacentPositions = listOf(
+                Pair(row - 1, col), // Yukarı
+                Pair(row + 1, col), // Aşağı
+                Pair(row, col - 1), // Sol
+                Pair(row, col + 1)  // Sağ
+            )
+
+            return adjacentPositions.any { placedLetters.containsKey(it) }
+        }
+
+        // Mevcut turdaki harfler için hamle yönünü belirle
+        val rows = currentTurnLetters.keys.map { it.first }.toSet()
+        val cols = currentTurnLetters.keys.map { it.second }.toSet()
+
+        // Eğer bir harf yerleştirilmişse, yön belirlenmiş demektir
+        if (currentTurnLetters.size == 1) {
+            val existingPos = currentTurnLetters.keys.first()
+
+            // Yeni harf ya aynı satırda (yatay) ya da aynı sütunda (dikey) olmalı
+            if (row == existingPos.first) {
+                // Yatay hareket - bitişik mi?
+                return col == existingPos.second - 1 || col == existingPos.second + 1
+            } else if (col == existingPos.second) {
+                // Dikey hareket - bitişik mi?
+                return row == existingPos.first - 1 || row == existingPos.first + 1
+            }
+
+            // Ne yatay ne dikey
+            return false
+        }
+
+        // Birden fazla harf yerleştirilmişse
+        // Tüm harfler ya aynı satırda ya da aynı sütunda olmalı
+        val allInSameRow = rows.size == 1
+        val allInSameCol = cols.size == 1
+
+        if (!allInSameRow && !allInSameCol) {
+            // Harfler hem satır hem sütun değiştiriyorsa geçersiz hamle
+            return false
+        }
+
+        // Yatay kelime oluşturma
+        if (allInSameRow) {
+            val fixedRow = rows.first()
+
+            // Yeni harf aynı satırda olmalı
+            if (row != fixedRow) {
+                return false
+            }
+
+            // Sütun aralığını kontrol et
+            val minCol = cols.minOrNull()!!
+            val maxCol = cols.maxOrNull()!!
+
+            // Başa veya sona ekleme
+            if (col == minCol - 1 || col == maxCol + 1) {
+                return true
+            }
+
+            // Ortadaki boşluğa ekleme
+            if (col > minCol && col < maxCol) {
+                // Boşluk kontrolü - arada boşluk olmamalı
+                for (c in minCol..maxCol) {
+                    if (c != col && !currentTurnLetters.containsKey(Pair(row, c)) &&
+                        !placedLetters.containsKey(Pair(row, c))) {
+                        return false // Boşluk var
+                    }
+                }
+                return true
+            }
+
+            return false
+        }
+
+        // Dikey kelime oluşturma
+        if (allInSameCol) {
+            val fixedCol = cols.first()
+
+            // Yeni harf aynı sütunda olmalı
+            if (col != fixedCol) {
+                return false
+            }
+
+            // Satır aralığını kontrol et
+            val minRow = rows.minOrNull()!!
+            val maxRow = rows.maxOrNull()!!
+
+            // Başa veya sona ekleme
+            if (row == minRow - 1 || row == maxRow + 1) {
+                return true
+            }
+
+            // Ortadaki boşluğa ekleme
+            if (row > minRow && row < maxRow) {
+                // Boşluk kontrolü - arada boşluk olmamalı
+                for (r in minRow..maxRow) {
+                    if (r != row && !currentTurnLetters.containsKey(Pair(r, col)) &&
+                        !placedLetters.containsKey(Pair(r, col))) {
+                        return false // Boşluk var
+                    }
+                }
+                return true
+            }
+
+            return false
+        }
+
+        return false
+    }
+
+    // Harflerin mevcut bir harfe bağlanıp bağlanmadığını kontrol et
+    private fun connectsToExistingLetter(): Boolean {
+        // İlk hamleyse merkezi kontrol et
+        if (isFirstMoveInGame) {
+            val centerRow = GameBoardMatrix.BOARD_SIZE / 2
+            val centerCol = GameBoardMatrix.BOARD_SIZE / 2
+            return currentTurnLetters.containsKey(Pair(centerRow, centerCol))
+        }
+
+        // Diğer hamlelerde tahtadaki harflere bitişik olmalı
+        for (pos in currentTurnLetters.keys) {
+            val adjacentPositions = listOf(
+                Pair(pos.first - 1, pos.second), // Yukarı
+                Pair(pos.first + 1, pos.second), // Aşağı
+                Pair(pos.first, pos.second - 1), // Sol
+                Pair(pos.first, pos.second + 1)  // Sağ
+            )
+
+            if (adjacentPositions.any { placedLetters.containsKey(it) }) {
+                return true
+            }
+        }
+        return false
+    }
     private fun validateAndSubmitPlay() {
         // Validate the current play
         if (currentTurnLetters.isEmpty()) {
@@ -1179,6 +1243,23 @@ class GameActivity : AppCompatActivity() {
         if (!areLettersContiguous()) {
             Toast.makeText(this, "Letters must be contiguous (no gaps)", Toast.LENGTH_SHORT).show()
             return
+        }
+
+        // İlk hamle kontrolü
+        if (isFirstMoveInGame) {
+            val centerRow = GameBoardMatrix.BOARD_SIZE / 2
+            val centerCol = GameBoardMatrix.BOARD_SIZE / 2
+
+            if (!currentTurnLetters.containsKey(Pair(centerRow, centerCol))) {
+                Toast.makeText(this, "İlk hamle merkez kareden geçmelidir", Toast.LENGTH_SHORT).show()
+                return
+            }
+        } else {
+            // Sonraki hamlelerde en az bir mevcut harfe bağlanmalı
+            if (!connectsToExistingLetter()) {
+                Toast.makeText(this, "Yeni harfler tahtadaki en az bir mevcut harfe bağlanmalıdır", Toast.LENGTH_SHORT).show()
+                return
+            }
         }
 
         // If all validations pass, submit the play
@@ -1199,49 +1280,47 @@ class GameActivity : AppCompatActivity() {
     }
 
     private fun areLettersContiguous(): Boolean {
-        if (currentTurnLetters.size <= 1) {
-            return true // Single letter is always contiguous
-        }
+        if (currentTurnLetters.size <= 1) return true
 
-        // Get all row and column values
-        val positions = currentTurnLetters.keys.toList()
-        val rows = positions.map { it.first }.toSet()
-        val cols = positions.map { it.second }.toSet()
+        val allLetters = currentTurnLetters.keys + placedLetters.keys
 
-        // If letters are in a single row
+        val rows = currentTurnLetters.keys.map { it.first }.toSet()
+        val cols = currentTurnLetters.keys.map { it.second }.toSet()
+
         if (rows.size == 1) {
             val row = rows.first()
-            val minCol = cols.minOrNull()!!
-            val maxCol = cols.maxOrNull()!!
+            val allCols = allLetters.filter { it.first == row }.map { it.second }
+            val minCol = allCols.minOrNull()!!
+            val maxCol = allCols.maxOrNull()!!
 
-            // Check for gaps in the column sequence
-            for (col in minCol..maxCol) {
-                val position = Pair(row, col)
-                if (!currentTurnLetters.containsKey(position) && !placedLetters.containsKey(position)) {
-                    return false // Gap found
+            for (c in minCol..maxCol) {
+                val pos = Pair(row, c)
+                if (!currentTurnLetters.containsKey(pos) && !placedLetters.containsKey(pos)) {
+                    return false
                 }
             }
             return true
         }
 
-        // If letters are in a single column
         if (cols.size == 1) {
             val col = cols.first()
-            val minRow = rows.minOrNull()!!
-            val maxRow = rows.maxOrNull()!!
+            val allRows = allLetters.filter { it.second == col }.map { it.first }
+            val minRow = allRows.minOrNull()!!
+            val maxRow = allRows.maxOrNull()!!
 
-            // Check for gaps in the row sequence
-            for (row in minRow..maxRow) {
-                val position = Pair(row, col)
-                if (!currentTurnLetters.containsKey(position) && !placedLetters.containsKey(position)) {
-                    return false // Gap found
+            for (r in minRow..maxRow) {
+                val pos = Pair(r, col)
+                if (!currentTurnLetters.containsKey(pos) && !placedLetters.containsKey(pos)) {
+                    return false
                 }
             }
             return true
         }
 
-        return false // Letters are neither in a single row nor in a single column
+        return false
     }
+
+
 
     private fun submitPlay() {
         // Cancel the countdown timer when submitting a move
