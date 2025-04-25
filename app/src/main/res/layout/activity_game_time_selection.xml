@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/auth_background"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:id="@+id/title_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Select Game Time"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="@color/primary"
+            android:gravity="center"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:id="@+id/description_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="You will be matched with other users who have chosen the time period you have chosen."
+            android:textSize="16sp"
+            android:textColor="@color/text_secondary"
+            android:gravity="center"
+            android:layout_marginBottom="24dp"/>
+
+        <!-- Hızlı Oyun Kategorisi -->
+        <TextView
+            android:id="@+id/fast_game_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Fast Game"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/primary"
+            android:layout_marginBottom="8dp"/>
+
+        <!-- 2 Dakika -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_2min"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardElevation="4dp"
+            app:cardCornerRadius="8dp"
+            android:layout_marginBottom="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp">
+
+                <RadioButton
+                    android:id="@+id/radio_2min"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="2 minutes: Users must write the word within 2 minutes. If they do not write, they lose the game."
+                    android:textSize="16sp"
+                    android:layout_marginStart="8dp"
+                    android:textColor="@color/text_primary"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- 5 Dakika -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_5min"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardElevation="4dp"
+            app:cardCornerRadius="8dp"
+            android:layout_marginBottom="24dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp">
+
+                <RadioButton
+                    android:id="@+id/radio_5min"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="5 minutes: Users must write the word within 5 minutes. If they do not write, they lose the game."
+                    android:textSize="16sp"
+                    android:layout_marginStart="8dp"
+                    android:textColor="@color/text_primary"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Genişletilmiş Oyun Kategorisi -->
+        <TextView
+            android:id="@+id/extended_game_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Extended Game"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/primary"
+            android:layout_marginBottom="8dp"/>
+
+        <!-- 12 Saat -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_12hour"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardElevation="4dp"
+            app:cardCornerRadius="8dp"
+            android:layout_marginBottom="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp">
+
+                <RadioButton
+                    android:id="@+id/radio_12hour"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="12 hours: Users must write the word within 12 hours. If they do not write, they lose the game."
+                    android:textSize="16sp"
+                    android:layout_marginStart="8dp"
+                    android:textColor="@color/text_primary"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- 24 Saat -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_24hour"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardElevation="4dp"
+            app:cardCornerRadius="8dp"
+            android:layout_marginBottom="32dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp">
+
+                <RadioButton
+                    android:id="@+id/radio_24hour"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="24 hours: Users must write the word within 24 hours. If they do not write, they lose the game."
+                    android:textSize="16sp"
+                    android:layout_marginStart="8dp"
+                    android:textColor="@color/text_primary"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Oyun Başlatma Butonları -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="16dp"
+            android:gravity="center_horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/button_play_with_friend"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Play with Friend"
+                android:textAllCaps="false"
+                android:textSize="16sp"
+                android:layout_marginBottom="12dp"
+                app:cornerRadius="12dp"
+                android:backgroundTint="@color/primary" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/button_random_match"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Random Matchmaking"
+                android:textAllCaps="false"
+                android:textSize="16sp"
+                app:cornerRadius="12dp"
+                android:backgroundTint="@color/primary" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>
