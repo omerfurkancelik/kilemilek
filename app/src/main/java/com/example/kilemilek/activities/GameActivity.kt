@@ -202,8 +202,8 @@ class GameActivity : AppCompatActivity() {
                     gameTimeLimit = gameRequest.gameData.timeLimit
                     gameTimeType = gameRequest.gameData.timeType
 
-                    // Initialize timer if needed
-                    if (gameTimeLimit > 0) {
+                    // ✅ Sadece oyuncunun sırasıysa timer başlasın
+                    if (gameTimeLimit > 0 && gameRequest.gameData.playerTurn == currentUserId) {
                         startCountdownTimer()
                     }
 
@@ -223,28 +223,30 @@ class GameActivity : AppCompatActivity() {
             }
     }
 
+
     private fun startCountdownTimer() {
-        // Calculate remaining time
+        // 🔒 Extra güvenlik: sırası kullanıcıda mı kontrol et
+        if (gameRequest.gameData.playerTurn != currentUserId) {
+            Log.d("GameActivity", "Not user's turn, countdown will not start.")
+            return
+        }
+
         val currentTime = System.currentTimeMillis()
 
-        // Eğer moveDeadline varsa ve geçerliyse onu kullan, yoksa yeni oluştur
         val deadline = if (gameRequest.moveDeadline > currentTime) {
             gameRequest.moveDeadline
         } else {
-            // Oyun türüne göre süre belirle
             currentTime + gameTimeLimit
         }
 
         val remainingTime = deadline - currentTime
 
         if (remainingTime <= 0) {
-            // Time is already up
             handleTimeUp()
             return
         }
 
-        // Start countdown
-        countDownTimer?.cancel() // Önce mevcut sayacı iptal et
+        countDownTimer?.cancel()
         countDownTimer = object : CountDownTimer(remainingTime, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 updateTimeRemainingText(millisUntilFinished)
@@ -256,6 +258,7 @@ class GameActivity : AppCompatActivity() {
         }.start()
     }
 
+
     private fun updateTimeRemainingText(millisUntilFinished: Long) {
         // Format based on time type
         val displayText = when {
@@ -263,16 +266,16 @@ class GameActivity : AppCompatActivity() {
                 // Short format for minutes and seconds
                 val minutes = millisUntilFinished / (60 * 1000)
                 val seconds = (millisUntilFinished % (60 * 1000)) / 1000
-                String.format("Kalan Süre: %02d:%02d", minutes, seconds)
+                String.format("Remaining Time: %02d:%02d", minutes, seconds)
             }
             gameTimeType.startsWith("EXTENDED") -> {
                 // Longer format for hours and minutes
                 val hours = millisUntilFinished / (60 * 60 * 1000)
                 val minutes = (millisUntilFinished % (60 * 60 * 1000)) / (60 * 1000)
-                String.format("Kalan Süre: %02d saat %02d dk.", hours, minutes)
+                String.format("Remaining Time: %02d saat %02d dk.", hours, minutes)
             }
             else -> {
-                "Kalan Süre: --:--"
+                "Remaining Time: --:--"
             }
         }
 
@@ -281,7 +284,7 @@ class GameActivity : AppCompatActivity() {
 
     private fun handleTimeUp() {
         // Show time up message
-        timeRemainingTextView.text = "Süre doldu!"
+        timeRemainingTextView.text = "Time is up!"
 
         // Eğer bu kullanıcının sırası ise, otomatik olarak oyunu kaybet
         if (gameRequest.gameData.playerTurn == currentUserId) {
@@ -306,12 +309,12 @@ class GameActivity : AppCompatActivity() {
                     )
                 )
                 .addOnSuccessListener {
-                    Toast.makeText(this, "Süre doldu! Oyunu kaybettiniz.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Time's up! You've lost the game.", Toast.LENGTH_LONG).show()
                     finish()
                 }
                 .addOnFailureListener { e ->
                     Log.e("GameActivity", "Error updating game after timeout: ${e.message}")
-                    Toast.makeText(this, "Oyunu sonlandırırken hata: ${e.message}",
+                    Toast.makeText(this, "Error while ending the game: ${e.message}",
                         Toast.LENGTH_SHORT).show()
                 }
         }
@@ -629,6 +632,7 @@ class GameActivity : AppCompatActivity() {
         return letterCard
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun setupBoardDragAndDrop() {
         // Make board cells clickable for withdrawing letters
         gameBoardView.setOnCellTouchListener { row, col, letter ->
@@ -652,183 +656,100 @@ class GameActivity : AppCompatActivity() {
                 DragEvent.ACTION_DRAG_STARTED -> {
                     event.clipDescription.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN)
                 }
-                DragEvent.ACTION_DRAG_ENTERED, DragEvent.ACTION_DRAG_LOCATION -> {
-                    true
-                }
-                DragEvent.ACTION_DRAG_EXITED -> {
-                    true
-                }
                 DragEvent.ACTION_DROP -> {
                     try {
-                        // Get the drop position
                         val boardSize = GameBoardMatrix.BOARD_SIZE.toFloat()
                         val cellSize = gameBoardView.width / boardSize
 
                         val col = (event.x / cellSize).toInt()
                         val row = (event.y / cellSize).toInt()
 
-                        // Check if position is valid
-                        if (row in 0 until GameBoardMatrix.BOARD_SIZE &&
-                            col in 0 until GameBoardMatrix.BOARD_SIZE &&
-                            currentDraggedLetter != null) {
+                        if (row !in 0 until GameBoardMatrix.BOARD_SIZE || col !in 0 until GameBoardMatrix.BOARD_SIZE || currentDraggedLetter == null) {
+                            returnToRack()
+                            return@setOnDragListener true
+                        }
 
-                            // Check if the cell is already occupied
-                            if (placedLetters.containsKey(Pair(row, col)) ||
-                                currentTurnLetters.containsKey(Pair(row, col))) {
+                        if (isFirstMoveInGame) {
+                            val centerRow = GameBoardMatrix.BOARD_SIZE / 2
+                            val centerCol = GameBoardMatrix.BOARD_SIZE / 2
 
-                                // Cell is occupied, return letter to rack
-                                if (!dragSourceIsBoard) {
-                                    currentDraggedView?.visibility = View.VISIBLE
-                                } else {
-                                    // If dragging from board, put it back
-                                    dragSourcePosition?.let { (sourceRow, sourceCol) ->
-                                        gameBoardView.placeLetter(sourceRow, sourceCol, currentDraggedLetter!!)
-                                        currentTurnLetters[Pair(sourceRow, sourceCol)] = currentDraggedLetter!!
-                                    }
+                            if (currentTurnLetters.isEmpty() && placedLetters.isEmpty()) {
+                                if (row != centerRow || col != centerCol) {
+                                    Toast.makeText(this, "You should put the first letter in the center", Toast.LENGTH_SHORT).show()
+                                    returnToRack()
+                                    return@setOnDragListener true
                                 }
                             } else {
-                                // Check if this is first move in the game
-                                if (isFirstMoveInGame && placedLetters.isEmpty() && currentTurnLetters.isEmpty()) {
-                                    // First move must include the center tile
-                                    val centerRow = GameBoardMatrix.BOARD_SIZE / 2
-                                    val centerCol = GameBoardMatrix.BOARD_SIZE / 2
+                                val tempTurn = currentTurnLetters.toMutableMap()
+                                tempTurn[Pair(row, col)] = currentDraggedLetter!!
 
-                                    if (row != centerRow || col != centerCol) {
-                                        Toast.makeText(this, "First move must be placed on the center square", Toast.LENGTH_SHORT).show()
+                                val rows = tempTurn.keys.map { it.first }.toSet()
+                                val cols = tempTurn.keys.map { it.second }.toSet()
 
-                                        // Return letter to rack
-                                        if (!dragSourceIsBoard) {
-                                            currentDraggedView?.visibility = View.VISIBLE
-                                        } else {
-                                            // If dragging from board, put it back
-                                            dragSourcePosition?.let { (sourceRow, sourceCol) ->
-                                                gameBoardView.placeLetter(sourceRow, sourceCol, currentDraggedLetter!!)
-                                                currentTurnLetters[Pair(sourceRow, sourceCol)] = currentDraggedLetter!!
-                                            }
-                                        }
+                                val sameRow = rows.size == 1
+                                val sameCol = cols.size == 1
 
-                                        return@setOnDragListener true
-                                    }
-                                }
-                                // If it's not the first move and no letters have been placed in this turn
-                                else if (!isFirstMoveInGame && currentTurnLetters.isEmpty()) {
-                                    // Check if the new letter intersects with or is adjacent to an existing word
-                                    if (!isAdjacentOrCrossesExistingWord(row, col)) {
-                                        Toast.makeText(this, "Letter must be adjacent to or intersect with an existing word", Toast.LENGTH_SHORT).show()
-
-                                        // Return the letter to the rack
-                                        if (!dragSourceIsBoard) {
-                                            currentDraggedView?.visibility = View.VISIBLE
-                                        } else {
-                                            // If dragging from the board, put it back
-                                            dragSourcePosition?.let { (sourceRow, sourceCol) ->
-                                                gameBoardView.placeLetter(sourceRow, sourceCol, currentDraggedLetter!!)
-                                                currentTurnLetters[Pair(sourceRow, sourceCol)] = currentDraggedLetter!!
-                                            }
-                                        }
-                                        return@setOnDragListener true
-                                    }
-                                }
-                                // If letters have already been placed in this turn
-                                else if (!isFirstMoveInGame && currentTurnLetters.isNotEmpty()) {
-                                    // Check if the letters are arranged properly
-                                    if (!isAdjacentToExistingLetter(row, col)) {
-                                        Toast.makeText(this, "Letters must be placed in a straight line with no gaps", Toast.LENGTH_SHORT).show()
-
-                                        // Return the letter to the rack
-                                        if (!dragSourceIsBoard) {
-                                            currentDraggedView?.visibility = View.VISIBLE
-                                        } else {
-                                            // If dragging from the board, put it back
-                                            dragSourcePosition?.let { (sourceRow, sourceCol) ->
-                                                gameBoardView.placeLetter(sourceRow, sourceCol, currentDraggedLetter!!)
-                                                currentTurnLetters[Pair(sourceRow, sourceCol)] = currentDraggedLetter!!
-                                            }
-                                        }
-                                        return@setOnDragListener true
-                                    }
-                                }
-
-                                // Place letter on the board
-                                val letterToPlace = currentDraggedLetter!!
-
-                                // For board view, just place the letter
-                                gameBoardView.placeLetter(row, col, letterToPlace)
-
-                                // Track placed letter in current turn
-                                currentTurnLetters[Pair(row, col)] = letterToPlace
-
-                                // If the letter was from the rack (not from board)
-                                if (!dragSourceIsBoard) {
-                                    // Remove letter from player's rack
-                                    val letterIndex = playerLetters.indexOf(letterToPlace)
-                                    if (letterIndex >= 0) {
-                                        playerLetters.removeAt(letterIndex)
-                                        // Update the letter rack UI with a slight delay to avoid UI conflicts
-                                        view.postDelayed({
-                                            updateLetterRackUI()
-                                        }, 100)
-                                    }
+                                if (!sameRow && !sameCol) {
+                                    Toast.makeText(this, "In the first move you can only move horizontally or vertically", Toast.LENGTH_SHORT).show()
+                                    returnToRack()
+                                    return@setOnDragListener true
                                 }
                             }
                         } else {
-                            // Return letter to rack if drop location is invalid
-                            if (!dragSourceIsBoard) {
-                                currentDraggedView?.visibility = View.VISIBLE
-                            } else {
-                                // If dragging from board, put it back
-                                dragSourcePosition?.let { (sourceRow, sourceCol) ->
-                                    gameBoardView.placeLetter(sourceRow, sourceCol, currentDraggedLetter!!)
-                                    currentTurnLetters[Pair(sourceRow, sourceCol)] = currentDraggedLetter!!
+                            if (currentTurnLetters.isEmpty()) {
+                                val adjacentPositions = listOf(
+                                    Pair(row - 1, col),
+                                    Pair(row + 1, col),
+                                    Pair(row, col - 1),
+                                    Pair(row, col + 1)
+                                )
+
+                                val connects = adjacentPositions.any { placedLetters.containsKey(it) }
+                                if (!connects) {
+                                    Toast.makeText(this, "The new letter must be adjacent to an existing letter", Toast.LENGTH_SHORT).show()
+                                    returnToRack()
+                                    return@setOnDragListener true
                                 }
+                            } else {
+                                if (!isAdjacentToExistingLetter(row, col)) {
+                                    Toast.makeText(this, "The new letter must be in the correct orientation", Toast.LENGTH_SHORT).show()
+                                    returnToRack()
+                                    return@setOnDragListener true
+                                }
+                            }
+                        }
+
+                        // Buraya kadar geldiyse, harfi koyabiliriz
+                        val letterToPlace = currentDraggedLetter!!
+
+                        gameBoardView.placeLetter(row, col, letterToPlace)
+                        currentTurnLetters[Pair(row, col)] = letterToPlace
+
+                        if (!dragSourceIsBoard) {
+                            val index = playerLetters.indexOf(letterToPlace)
+                            if (index >= 0) {
+                                playerLetters.removeAt(index)
+                                view.postDelayed({
+                                    updateLetterRackUI()
+                                }, 100)
                             }
                         }
                     } catch (e: Exception) {
                         Log.e("GameActivity", "Error in drop: ${e.message}")
-                        e.printStackTrace()
-// Make sure letter is visible again if there was an error
-                        if (!dragSourceIsBoard) {
-                            currentDraggedView?.visibility = View.VISIBLE
-                        } else {
-                            dragSourcePosition?.let { (sourceRow, sourceCol) ->
-                                if (currentDraggedLetter != null) {
-                                    gameBoardView.placeLetter(sourceRow, sourceCol, currentDraggedLetter!!)
-                                    currentTurnLetters[Pair(sourceRow, sourceCol)] = currentDraggedLetter!!
-                                }
-                            }
-                        }
+                        returnToRack()
                     }
 
                     true
                 }
                 DragEvent.ACTION_DRAG_ENDED -> {
                     try {
-                        // If drag ended without drop on a valid target
                         if (!event.result) {
-                            if (!dragSourceIsBoard) {
-                                // Letter was from rack, make it visible again
-                                currentDraggedView?.visibility = View.VISIBLE
-                            } else {
-                                // Letter was from board and dropped outside valid targets
-                                // Remove from board first
-                                dragSourcePosition?.let { (sourceRow, sourceCol) ->
-                                    gameBoardView.clearLetter(sourceRow, sourceCol)
-                                    currentTurnLetters.remove(Pair(sourceRow, sourceCol))
-                                }
-
-                                // Then add to player's rack
-                                currentDraggedLetter?.let {
-                                    playerLetters.add(it)
-                                    updateLetterRackUI()
-                                }
-                            }
+                            returnToRack()
                         }
                     } catch (e: Exception) {
                         Log.e("GameActivity", "Error in drag ended: ${e.message}")
-                        e.printStackTrace()
                     }
 
-                    // Reset drag state
                     currentDraggedLetter = null
                     currentDraggedView = null
                     dragSourceIsBoard = false
@@ -836,112 +757,65 @@ class GameActivity : AppCompatActivity() {
 
                     true
                 }
-                else -> false
+                else -> true
             }
         }
 
         // Set up drop on letter rack (for returning letters)
         letterRackLayout.setOnDragListener { view, event ->
             when (event.action) {
-                DragEvent.ACTION_DRAG_STARTED -> {
-                    // Accept all drags
-                    true
-                }
+                DragEvent.ACTION_DRAG_STARTED -> true
                 DragEvent.ACTION_DROP -> {
                     try {
-                        // If dropping on another letter in the rack (for shuffling)
                         val targetView = findLetterViewAt(event.x, event.y)
                         if (targetView != null && targetView != currentDraggedView && !dragSourceIsBoard) {
-                            // Get the target letter
                             val targetLetter = targetView.tag as? Char
 
                             if (targetLetter != null && currentDraggedLetter != null) {
-                                // This is a shuffle operation - swap the two letters
                                 val sourceLetter = currentDraggedLetter!!
 
-                                // Find positions in playerLetters
                                 val sourceIndex = playerLetters.indexOf(sourceLetter)
                                 val targetIndex = playerLetters.indexOf(targetLetter)
 
                                 if (sourceIndex >= 0 && targetIndex >= 0) {
-                                    // Swap the letters
                                     playerLetters[sourceIndex] = targetLetter
                                     playerLetters[targetIndex] = sourceLetter
 
-                                    // Update UI
                                     updateLetterRackUI()
-
-                                    // Update Firebase
                                     updatePlayerLettersInFirebase()
                                 }
                             }
                         } else {
-                            // Normal drop on rack (returning letter)
                             if (currentDraggedLetter != null) {
-                                // If from board, remove from current turn letters
                                 if (dragSourceIsBoard && dragSourcePosition != null) {
                                     currentTurnLetters.remove(dragSourcePosition)
                                     gameBoardView.clearLetter(dragSourcePosition!!.first, dragSourcePosition!!.second)
 
-                                    // Add to player rack only if it came from the board
                                     playerLetters.add(currentDraggedLetter!!)
 
-                                    // Update Firebase with the changed letters
                                     updatePlayerLettersInFirebase()
                                 } else {
-                                    // If the letter was already in the rack, don't add it again
-                                    // Just make it visible again
                                     currentDraggedView?.visibility = View.VISIBLE
                                 }
 
-                                view.post {
-                                    updateLetterRackUI()
-                                }
+                                view.post { updateLetterRackUI() }
                             }
                         }
                     } catch (e: Exception) {
                         Log.e("GameActivity", "Error handling drop on letter rack: ${e.message}")
-                        e.printStackTrace()
-
-                        // Make sure letter is visible again if there was an error
-                        if (!dragSourceIsBoard) {
-                            currentDraggedView?.visibility = View.VISIBLE
-                        }
+                        returnToRack()
                     }
                     true
                 }
                 DragEvent.ACTION_DRAG_ENDED -> {
                     try {
-                        // If drag ended without drop on a valid target
                         if (!event.result) {
-                            if (!dragSourceIsBoard) {
-                                // Letter was from rack, make it visible again
-                                currentDraggedView?.visibility = View.VISIBLE
-                            } else {
-                                // Letter was from board and dropped outside valid targets
-                                // Remove from board first
-                                dragSourcePosition?.let { (sourceRow, sourceCol) ->
-                                    gameBoardView.clearLetter(sourceRow, sourceCol)
-                                    currentTurnLetters.remove(Pair(sourceRow, sourceCol))
-                                }
-
-                                // Then add to player's rack
-                                currentDraggedLetter?.let {
-                                    playerLetters.add(it)
-
-                                    // Update Firebase with the changed letters
-                                    updatePlayerLettersInFirebase()
-
-                                    updateLetterRackUI()
-                                }
-                            }
+                            returnToRack()
                         }
                     } catch (e: Exception) {
                         Log.e("GameActivity", "Error in drag ended: ${e.message}")
-                        e.printStackTrace()
                     }
 
-                    // Reset drag state
                     currentDraggedLetter = null
                     currentDraggedView = null
                     dragSourceIsBoard = false
@@ -954,6 +828,7 @@ class GameActivity : AppCompatActivity() {
         }
     }
 
+
     private fun shuffleLetters() {
         playerLetters.shuffle()
         updateLetterRackUI()
@@ -961,6 +836,17 @@ class GameActivity : AppCompatActivity() {
         // Update Firebase with new order
         updatePlayerLettersInFirebase()
     }
+    private fun returnToRack() {
+        if (!dragSourceIsBoard) {
+            currentDraggedView?.visibility = View.VISIBLE
+        } else {
+            dragSourcePosition?.let { (sourceRow, sourceCol) ->
+                gameBoardView.placeLetter(sourceRow, sourceCol, currentDraggedLetter!!)
+                currentTurnLetters[Pair(sourceRow, sourceCol)] = currentDraggedLetter!!
+            }
+        }
+    }
+
 
     /**
      * Find a letter view at the specified coordinates in the letter rack
@@ -1037,166 +923,89 @@ class GameActivity : AppCompatActivity() {
     }
 
     private fun isAdjacentToExistingLetter(row: Int, col: Int): Boolean {
-        // İlk hamle kontrolü - Tahtanın merkezinden başlamalı
         if (isFirstMoveInGame) {
             val centerRow = GameBoardMatrix.BOARD_SIZE / 2
             val centerCol = GameBoardMatrix.BOARD_SIZE / 2
 
-            // İlk harf merkeze yerleştirilmeli
             if (currentTurnLetters.isEmpty()) {
+                // İlk harf merkeze yerleştirilmeli
                 return row == centerRow && col == centerCol
+            }
+
+            if (!currentTurnLetters.containsKey(Pair(centerRow, centerCol))) {
+                return false
+            }
+
+            val rows = currentTurnLetters.keys.map { it.first }.toSet()
+            val cols = currentTurnLetters.keys.map { it.second }.toSet()
+
+            val sameRow = rows.size == 1
+            val sameCol = cols.size == 1
+
+            if (sameRow && !sameCol) {
+                // Yatay diziliyoruz, satır sabit olmalı
+                return row == centerRow
+            } else if (!sameRow && sameCol) {
+                // Dikey diziliyoruz, sütun sabit olmalı
+                return col == centerCol
+            } else if (sameRow && sameCol) {
+                // Şu an sadece merkezdeyiz, ilk ekleme yapılacak
+                return (row == centerRow && (col == centerCol - 1 || col == centerCol + 1)) ||
+                        (col == centerCol && (row == centerRow - 1 || row == centerRow + 1))
             } else {
-                // İlk hamledeki diğer harfler, merkeze ya da ilk harfe bağlı olmalı ve
-                // hepsi aynı yönde (yatay veya dikey) olmalı
-                if (!currentTurnLetters.containsKey(Pair(centerRow, centerCol))) {
-                    return false // İlk hamle merkezi içermeli
-                }
-
-                // İlk hamledeki tüm harflerin aynı yönde olduğundan emin ol
-                val rows = currentTurnLetters.keys.map { it.first }.toSet()
-                val cols = currentTurnLetters.keys.map { it.second }.toSet()
-
-                // Yatay diziliş
-                if (rows.size == 1) {
-                    // Yeni harf de aynı satırda olmalı
-                    if (row != rows.first()) {
-                        return false
-                    }
-
-                    // Sütun aralığını kontrol et - bitişik olmalı
-                    val minCol = cols.minOrNull()!!
-                    val maxCol = cols.maxOrNull()!!
-
-                    return col == minCol - 1 || col == maxCol + 1 || (col > minCol && col < maxCol)
-                }
-
-                // Dikey diziliş
-                if (cols.size == 1) {
-                    // Yeni harf de aynı sütunda olmalı
-                    if (col != cols.first()) {
-                        return false
-                    }
-
-                    // Satır aralığını kontrol et - bitişik olmalı
-                    val minRow = rows.minOrNull()!!
-                    val maxRow = rows.maxOrNull()!!
-
-                    return row == minRow - 1 || row == maxRow + 1 || (row > minRow && row < maxRow)
-                }
-
-                // Hem satır hem sütun değişiyorsa geçersiz hamle
                 return false
             }
         }
 
-        // Sonraki hamleler için - tahtadaki en az bir harfe bitişik olmalı
+        // İlk hamle değilse: normal bitişiklik kontrolü
         if (currentTurnLetters.isEmpty()) {
-            // Tahtadaki herhangi bir harfe bitişik mi kontrol et
             val adjacentPositions = listOf(
-                Pair(row - 1, col), // Yukarı
-                Pair(row + 1, col), // Aşağı
-                Pair(row, col - 1), // Sol
-                Pair(row, col + 1)  // Sağ
+                Pair(row - 1, col),
+                Pair(row + 1, col),
+                Pair(row, col - 1),
+                Pair(row, col + 1)
             )
-
             return adjacentPositions.any { placedLetters.containsKey(it) }
         }
 
-        // Mevcut turdaki harfler için hamle yönünü belirle
         val rows = currentTurnLetters.keys.map { it.first }.toSet()
         val cols = currentTurnLetters.keys.map { it.second }.toSet()
 
-        // Eğer bir harf yerleştirilmişse, yön belirlenmiş demektir
         if (currentTurnLetters.size == 1) {
             val existingPos = currentTurnLetters.keys.first()
-
-            // Yeni harf ya aynı satırda (yatay) ya da aynı sütunda (dikey) olmalı
             if (row == existingPos.first) {
-                // Yatay hareket - bitişik mi?
                 return col == existingPos.second - 1 || col == existingPos.second + 1
             } else if (col == existingPos.second) {
-                // Dikey hareket - bitişik mi?
                 return row == existingPos.first - 1 || row == existingPos.first + 1
             }
-
-            // Ne yatay ne dikey
             return false
         }
 
-        // Birden fazla harf yerleştirilmişse
-        // Tüm harfler ya aynı satırda ya da aynı sütunda olmalı
         val allInSameRow = rows.size == 1
         val allInSameCol = cols.size == 1
 
         if (!allInSameRow && !allInSameCol) {
-            // Harfler hem satır hem sütun değiştiriyorsa geçersiz hamle
             return false
         }
 
-        // Yatay kelime oluşturma
         if (allInSameRow) {
             val fixedRow = rows.first()
-
-            // Yeni harf aynı satırda olmalı
             if (row != fixedRow) {
                 return false
             }
-
-            // Sütun aralığını kontrol et
             val minCol = cols.minOrNull()!!
             val maxCol = cols.maxOrNull()!!
-
-            // Başa veya sona ekleme
-            if (col == minCol - 1 || col == maxCol + 1) {
-                return true
-            }
-
-            // Ortadaki boşluğa ekleme
-            if (col > minCol && col < maxCol) {
-                // Boşluk kontrolü - arada boşluk olmamalı
-                for (c in minCol..maxCol) {
-                    if (c != col && !currentTurnLetters.containsKey(Pair(row, c)) &&
-                        !placedLetters.containsKey(Pair(row, c))) {
-                        return false // Boşluk var
-                    }
-                }
-                return true
-            }
-
-            return false
+            return col == minCol - 1 || col == maxCol + 1
         }
 
-        // Dikey kelime oluşturma
         if (allInSameCol) {
             val fixedCol = cols.first()
-
-            // Yeni harf aynı sütunda olmalı
             if (col != fixedCol) {
                 return false
             }
-
-            // Satır aralığını kontrol et
             val minRow = rows.minOrNull()!!
             val maxRow = rows.maxOrNull()!!
-
-            // Başa veya sona ekleme
-            if (row == minRow - 1 || row == maxRow + 1) {
-                return true
-            }
-
-            // Ortadaki boşluğa ekleme
-            if (row > minRow && row < maxRow) {
-                // Boşluk kontrolü - arada boşluk olmamalı
-                for (r in minRow..maxRow) {
-                    if (r != row && !currentTurnLetters.containsKey(Pair(r, col)) &&
-                        !placedLetters.containsKey(Pair(r, col))) {
-                        return false // Boşluk var
-                    }
-                }
-                return true
-            }
-
-            return false
+            return row == minRow - 1 || row == maxRow + 1
         }
 
         return false
@@ -1227,44 +1036,50 @@ class GameActivity : AppCompatActivity() {
         return false
     }
     private fun validateAndSubmitPlay() {
-        // Validate the current play
         if (currentTurnLetters.isEmpty()) {
             Toast.makeText(this, "No letters placed on the board", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // Check if letters are in a straight line
         if (!areLettersInStraightLine()) {
             Toast.makeText(this, "Letters must be placed in a straight line", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // Check if letters are contiguous
         if (!areLettersContiguous()) {
             Toast.makeText(this, "Letters must be contiguous (no gaps)", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // İlk hamle kontrolü
-        if (isFirstMoveInGame) {
-            val centerRow = GameBoardMatrix.BOARD_SIZE / 2
-            val centerCol = GameBoardMatrix.BOARD_SIZE / 2
+        val centerRow = GameBoardMatrix.BOARD_SIZE / 2
+        val centerCol = GameBoardMatrix.BOARD_SIZE / 2
 
+        if (isFirstMoveInGame) {
             if (!currentTurnLetters.containsKey(Pair(centerRow, centerCol))) {
-                Toast.makeText(this, "İlk hamle merkez kareden geçmelidir", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "The first move must pass through the center square", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val firstMoveRows = currentTurnLetters.keys.map { it.first }.toSet()
+            val firstMoveCols = currentTurnLetters.keys.map { it.second }.toSet()
+
+            val isStraightRow = firstMoveRows.size == 1
+            val isStraightCol = firstMoveCols.size == 1
+
+            if (!isStraightRow && !isStraightCol) {
+                Toast.makeText(this, "In the first move the word must be only horizontal or only vertical", Toast.LENGTH_SHORT).show()
                 return
             }
         } else {
-            // Sonraki hamlelerde en az bir mevcut harfe bağlanmalı
             if (!connectsToExistingLetter()) {
-                Toast.makeText(this, "Yeni harfler tahtadaki en az bir mevcut harfe bağlanmalıdır", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "New letters must be connected to existing letters on the board", Toast.LENGTH_SHORT).show()
                 return
             }
         }
 
-        // If all validations pass, submit the play
         submitPlay()
     }
+
 
     private fun areLettersInStraightLine(): Boolean {
         if (currentTurnLetters.size <= 1) {
