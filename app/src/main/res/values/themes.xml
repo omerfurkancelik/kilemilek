@@ -20,27 +20,10 @@
         <!-- Background colors -->
         <item name="android:colorBackground">@color/background</item>
 
-        <!-- Button styles -->
-        <item name="buttonStyle">@style/Widget.Kilemilek.Button</item>
-
-        <!-- Card styles -->
-        <item name="cardViewStyle">@style/Widget.Kilemilek.CardView</item>
     </style>
 
     <style name="Theme.Kilemilek" parent="Base.Theme.Kilemilek" />
 
     <!-- Custom button style -->
-    <style name="Widget.Kilemilek.Button" parent="Widget.MaterialComponents.Button">
-        <item name="backgroundTint">@color/primary</item>
-        <item name="android:textColor">@color/white</item>
-        <item name="cornerRadius">12dp</item>
-    </style>
 
-    <!-- Custom card style -->
-    <style name="Widget.Kilemilek.CardView" parent="Widget.MaterialComponents.CardView">
-        <item name="cardBackgroundColor">@color/white</item>
-        <item name="cardCornerRadius">12dp</item>
-        <item name="cardElevation">4dp</item>
-        <item name="contentPadding">16dp</item>
-    </style>
 </resources>

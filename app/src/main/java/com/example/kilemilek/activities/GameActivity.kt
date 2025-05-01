@@ -634,6 +634,17 @@ class GameActivity : AppCompatActivity() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupBoardDragAndDrop() {
+        // Create a red dot indicator view to show drop location
+        val redDotIndicator = View(this).apply {
+            setBackgroundResource(R.drawable.red_dot_indicator)
+            layoutParams = ViewGroup.LayoutParams(24, 24)
+            visibility = View.GONE
+        }
+
+        // Add the indicator to the root view
+        val rootView = findViewById<ViewGroup>(android.R.id.content)
+        rootView.addView(redDotIndicator)
+
         // Make board cells clickable for withdrawing letters
         gameBoardView.setOnCellTouchListener { row, col, letter ->
             try {
@@ -656,7 +667,34 @@ class GameActivity : AppCompatActivity() {
                 DragEvent.ACTION_DRAG_STARTED -> {
                     event.clipDescription.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN)
                 }
+                DragEvent.ACTION_DRAG_LOCATION -> {
+                    // Update the position of the red dot indicator as drag moves
+                    val boardSize = GameBoardMatrix.BOARD_SIZE.toFloat()
+                    val cellSize = gameBoardView.width / boardSize
+
+                    val col = (event.x / cellSize).toInt()
+                    val row = (event.y / cellSize).toInt()
+
+                    if (row in 0 until GameBoardMatrix.BOARD_SIZE && col in 0 until GameBoardMatrix.BOARD_SIZE) {
+                        // Calculate cell center position
+                        val cellCenterX = gameBoardView.x + col * cellSize + cellSize / 2
+                        val cellCenterY = gameBoardView.y + row * cellSize + cellSize / 2
+
+                        // Position red dot at cell center
+                        redDotIndicator.x = cellCenterX - redDotIndicator.layoutParams.width / 2
+                        redDotIndicator.y = cellCenterY - redDotIndicator.layoutParams.height / 2
+
+                        // Show indicator only if the cell is empty
+                        val cellIsEmpty = !placedLetters.containsKey(Pair(row, col)) &&
+                                !currentTurnLetters.containsKey(Pair(row, col))
+                        redDotIndicator.visibility = if (cellIsEmpty) View.VISIBLE else View.GONE
+                    }
+                    true
+                }
                 DragEvent.ACTION_DROP -> {
+                    // Hide indicator when letter is dropped
+                    redDotIndicator.visibility = View.GONE
+
                     try {
                         val boardSize = GameBoardMatrix.BOARD_SIZE.toFloat()
                         val cellSize = gameBoardView.width / boardSize
@@ -742,6 +780,9 @@ class GameActivity : AppCompatActivity() {
                     true
                 }
                 DragEvent.ACTION_DRAG_ENDED -> {
+                    // Hide the indicator when drag operation ends
+                    redDotIndicator.visibility = View.GONE
+
                     try {
                         if (!event.result) {
                             returnToRack()
@@ -757,12 +798,25 @@ class GameActivity : AppCompatActivity() {
 
                     true
                 }
+                DragEvent.ACTION_DRAG_EXITED -> {
+                    // Hide indicator when drag leaves the board
+                    redDotIndicator.visibility = View.GONE
+                    true
+                }
                 else -> true
             }
         }
 
         // Set up drop on letter rack (for returning letters)
         letterRackLayout.setOnDragListener { view, event ->
+            // Hide indicator when over the letter rack
+            if (event.action == DragEvent.ACTION_DRAG_LOCATION ||
+                event.action == DragEvent.ACTION_DRAG_EXITED ||
+                event.action == DragEvent.ACTION_DROP ||
+                event.action == DragEvent.ACTION_DRAG_ENDED) {
+                redDotIndicator.visibility = View.GONE
+            }
+
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED -> true
                 DragEvent.ACTION_DROP -> {
