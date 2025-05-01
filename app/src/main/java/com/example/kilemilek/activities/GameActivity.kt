@@ -1,6 +1,7 @@
 package com.example.kilemilek.activities
 
 import android.annotation.SuppressLint
+import android.app.ProgressDialog.show
 import android.content.ClipData
 import android.content.ClipDescription
 import android.graphics.Color
@@ -24,15 +25,20 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.res.ResourcesCompat
+import androidx.lifecycle.lifecycleScope
 import com.example.kilemilek.objects.LetterDistribution
 import com.example.kilemilek.R
 import com.example.kilemilek.models.GameData
 import com.example.kilemilek.models.GameRequestModel
 import com.example.kilemilek.models.LastMove
 import com.example.kilemilek.objects.GameBoardMatrix
+import com.example.kilemilek.utils.BoardWordValidator
+import com.example.kilemilek.utils.TurkishDictionary
 import com.example.kilemilek.views.GameBoardView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
 import java.util.*
 
 class GameActivity : AppCompatActivity() {
@@ -79,6 +85,11 @@ class GameActivity : AppCompatActivity() {
     // Game state flags
     private var isFirstMoveInGame = false
 
+    private lateinit var turkishDictionary: TurkishDictionary
+    private lateinit var boardValidator: BoardWordValidator
+    private var isDictionaryLoaded = false
+
+
     @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,6 +111,8 @@ class GameActivity : AppCompatActivity() {
         playButton = findViewById(R.id.play_button)
         withdrawButton = findViewById(R.id.withdraw_button)
         shuffleButton = findViewById(R.id.shuffle_button)
+
+        loadDictionary()
 
         // Dinamik olarak time_remaining_text oluştur veya bul
         try {
@@ -158,6 +171,50 @@ class GameActivity : AppCompatActivity() {
 
         // Load game data
         loadGameData()
+    }
+
+    private fun loadDictionary() {
+        // Show loading indicator
+
+
+        // Launch coroutine to load dictionary
+        lifecycleScope.launch {
+            try {
+                turkishDictionary = TurkishDictionary(applicationContext)
+                val result = turkishDictionary.loadDictionary("turkish.txt")
+
+                isDictionaryLoaded = result
+
+                if (result) {
+                    boardValidator = BoardWordValidator(turkishDictionary)
+                    Log.d("GameActivity", "Dictionary loaded successfully with ${turkishDictionary.dictionarySize()} words")
+                    Toast.makeText(
+                        this@GameActivity,
+                        "Dictionary loaded with ${turkishDictionary.dictionarySize()} words",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Log.e("GameActivity", "Failed to load dictionary")
+                    Toast.makeText(
+                        this@GameActivity,
+                        "Failed to load dictionary. Word validation will be skipped.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+
+                // Hide loading dialog
+
+            } catch (e: Exception) {
+                Log.e("GameActivity", "Error loading dictionary", e)
+
+
+                Toast.makeText(
+                    this@GameActivity,
+                    "Error loading dictionary: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     private fun withdrawLetters() {
@@ -1089,6 +1146,7 @@ class GameActivity : AppCompatActivity() {
         }
         return false
     }
+
     private fun validateAndSubmitPlay() {
         if (currentTurnLetters.isEmpty()) {
             Toast.makeText(this, "No letters placed on the board", Toast.LENGTH_SHORT).show()
@@ -1131,6 +1189,48 @@ class GameActivity : AppCompatActivity() {
             }
         }
 
+        // If dictionary is loaded, validate the words
+        if (isDictionaryLoaded) {
+            // Create a map of board state for validation
+            val boardStateMap = mutableMapOf<String, String>()
+
+            // Add existing letters
+            placedLetters.forEach { (position, letter) ->
+                boardStateMap["${position.first},${position.second}"] = letter.toString()
+            }
+
+            // Add new letters
+            currentTurnLetters.forEach { (position, letter) ->
+                boardStateMap["${position.first},${position.second}"] = letter.toString()
+            }
+
+            // Get positions of new letters for main word extraction
+            val newLetterPositions = currentTurnLetters.keys.toList()
+
+            // Validate words on the board
+            val (isValid, mainWord, invalidWords) = boardValidator.validateNewWord(boardStateMap, newLetterPositions)
+
+            if (!isValid) {
+                // Show dialog with invalid words
+                val message = if (invalidWords.isEmpty()) {
+                    "The word \"$mainWord\" is not a valid Turkish word."
+                } else {
+                    "Invalid Turkish words found: ${invalidWords.joinToString(", ")}"
+                }
+
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Invalid Words")
+                    .setMessage(message)
+                    .setPositiveButton("Try Again") { dialog, _ ->
+                        dialog.dismiss()
+                    }
+                    .show()
+
+                return
+            }
+        }
+
+        // All validation passed, submit the play
         submitPlay()
     }
 
