@@ -230,11 +230,10 @@ class GameActivity : AppCompatActivity() {
         // Clear the current turn letters map
         currentTurnLetters.clear()
 
-        // Update the letter rack UI
+        // Update the letter rack UI (local only)
         updateLetterRackUI()
 
-        // Update Firebase with new letters
-        updatePlayerLettersInFirebase()
+        // Note: Removed the Firebase update call here
     }
 
     private fun loadGameData() {
@@ -511,7 +510,7 @@ class GameActivity : AppCompatActivity() {
             playerLetters.clear()
             playerLetters.addAll(LetterDistribution.drawLetters(7))
 
-            // Save assigned letters to Firebase
+            // Save assigned letters to Firebase (only on first load)
             updatePlayerLettersInFirebase()
         }
 
@@ -705,11 +704,22 @@ class GameActivity : AppCompatActivity() {
         // Make board cells clickable for withdrawing letters
         gameBoardView.setOnCellTouchListener { row, col, letter ->
             try {
-                if (letter != null && currentTurnLetters.containsKey(Pair(row, col))) {
+                // Only allow withdrawing letters that were placed in the current turn
+                // Check if the cell contains a letter, if it's in currentTurnLetters, and NOT in placedLetters
+                if (letter != null && currentTurnLetters.containsKey(Pair(row, col)) && !placedLetters.containsKey(Pair(row, col))) {
                     // This is a letter placed in current turn - withdraw it to the rack
                     withdrawLetterFromBoard(row, col)
                     true
                 } else {
+                    // Either no letter, or it's from a previous turn (in placedLetters)
+                    if (letter != null && placedLetters.containsKey(Pair(row, col))) {
+                        // This is a letter from a previous turn - show a message
+                        Toast.makeText(
+                            this,
+                            "Cannot withdraw letters from previous turns",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                     false
                 }
             } catch (e: Exception) {
@@ -759,11 +769,20 @@ class GameActivity : AppCompatActivity() {
                         val col = (event.x / cellSize).toInt()
                         val row = (event.y / cellSize).toInt()
 
+                        // Check if the position is within board bounds and we have a valid letter
                         if (row !in 0 until GameBoardMatrix.BOARD_SIZE || col !in 0 until GameBoardMatrix.BOARD_SIZE || currentDraggedLetter == null) {
                             returnToRack()
                             return@setOnDragListener true
                         }
 
+                        // Check if there's already a letter in this position (from current or previous turns)
+                        if (placedLetters.containsKey(Pair(row, col)) || currentTurnLetters.containsKey(Pair(row, col))) {
+                            Toast.makeText(this, "Cannot place a letter on top of another letter", Toast.LENGTH_SHORT).show()
+                            returnToRack()
+                            return@setOnDragListener true
+                        }
+
+                        // First move checks
                         if (isFirstMoveInGame) {
                             val centerRow = GameBoardMatrix.BOARD_SIZE / 2
                             val centerCol = GameBoardMatrix.BOARD_SIZE / 2
@@ -814,7 +833,7 @@ class GameActivity : AppCompatActivity() {
                             }
                         }
 
-                        // Buraya kadar geldiyse, harfi koyabiliriz
+                        // If we reached here, we can place the letter
                         val letterToPlace = currentDraggedLetter!!
 
                         gameBoardView.placeLetter(row, col, letterToPlace)
@@ -866,14 +885,6 @@ class GameActivity : AppCompatActivity() {
 
         // Set up drop on letter rack (for returning letters)
         letterRackLayout.setOnDragListener { view, event ->
-            // Hide indicator when over the letter rack
-            if (event.action == DragEvent.ACTION_DRAG_LOCATION ||
-                event.action == DragEvent.ACTION_DRAG_EXITED ||
-                event.action == DragEvent.ACTION_DROP ||
-                event.action == DragEvent.ACTION_DRAG_ENDED) {
-                redDotIndicator.visibility = View.GONE
-            }
-
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED -> true
                 DragEvent.ACTION_DROP -> {
@@ -893,7 +904,7 @@ class GameActivity : AppCompatActivity() {
                                     playerLetters[targetIndex] = sourceLetter
 
                                     updateLetterRackUI()
-                                    updatePlayerLettersInFirebase()
+                                    // Note: Removed the Firebase update call here
                                 }
                             }
                         } else {
@@ -904,7 +915,7 @@ class GameActivity : AppCompatActivity() {
 
                                     playerLetters.add(currentDraggedLetter!!)
 
-                                    updatePlayerLettersInFirebase()
+                                    // Note: Removed the Firebase update call here
                                 } else {
                                     currentDraggedView?.visibility = View.VISIBLE
                                 }
@@ -944,9 +955,9 @@ class GameActivity : AppCompatActivity() {
         playerLetters.shuffle()
         updateLetterRackUI()
 
-        // Update Firebase with new order
-        updatePlayerLettersInFirebase()
+        // Note: Removed the Firebase update call here
     }
+
     private fun returnToRack() {
         if (!dragSourceIsBoard) {
             currentDraggedView?.visibility = View.VISIBLE
@@ -1001,11 +1012,10 @@ class GameActivity : AppCompatActivity() {
         // Add back to player's rack
         playerLetters.add(letter)
 
-        // Update letter rack UI
+        // Update letter rack UI (local only)
         updateLetterRackUI()
 
-        // Update Firebase with updated letters
-        updatePlayerLettersInFirebase()
+        // Note: Removed the Firebase update call here
     }
 
 
@@ -1375,7 +1385,7 @@ class GameActivity : AppCompatActivity() {
             timeType = gameTimeType     // Preserve the original time type
         )
 
-        // Update Firestore
+        // Update Firestore - THIS IS THE ONLY PLACE WE UPDATE FIREBASE
         db.collection("game_requests").document(gameId)
             .update(
                 mapOf(

@@ -3,6 +3,7 @@ package com.example.kilemilek.activities
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.kilemilek.R
@@ -38,15 +39,13 @@ class RandomMatchmakingActivity : AppCompatActivity() {
         db.collection("users").document(currentUserId).get().addOnSuccessListener { doc ->
             currentUserName = doc.getString("name") ?: "Unknown"
             checkOrCreateMatch()
-
-            listenForMatchedGame()
         }
     }
 
     private fun checkOrCreateMatch() {
         val queueRef = db.collection("game_time_queue")
 
-        // 1. İlk olarak sorguyu dışarıda yap
+        // 1. First check for existing players in queue
         queueRef
             .whereEqualTo("timeType", selectedTimeType)
             .whereNotEqualTo("userId", currentUserId)
@@ -60,12 +59,12 @@ class RandomMatchmakingActivity : AppCompatActivity() {
                     val opponentId = opponentDoc.getString("userId") ?: return@addOnSuccessListener
                     val opponentName = opponentDoc.getString("userName") ?: "Opponent"
 
-                    // 2. Transaction başlat (rakibi eşleştir ve sil)
+                    // 2. Start transaction (match with opponent and remove from queue)
                     db.runTransaction { transaction ->
                         val opponentSnapshot = transaction.get(opponentRef)
 
                         if (!opponentSnapshot.exists()) {
-                            return@runTransaction false // Rakip bu sırada eşleşmiş olabilir
+                            return@runTransaction false // Opponent may have been matched
                         }
 
                         transaction.delete(opponentRef)
@@ -75,6 +74,7 @@ class RandomMatchmakingActivity : AppCompatActivity() {
 
                         val newGameRef = db.collection("game_requests").document()
 
+                        // Create game with status already set to "accepted" instead of "pending"
                         val game = GameRequestModel(
                             id = newGameRef.id,
                             senderId = currentUserId,
@@ -83,7 +83,7 @@ class RandomMatchmakingActivity : AppCompatActivity() {
                             receiverId = opponentId,
                             receiverName = opponentName,
                             receiverEmail = "match@example.com",
-                            status = "pending",
+                            status = "accepted", // Auto-accept the game
                             createdAt = currentTime,
                             lastUpdatedAt = currentTime,
                             gameTimeType = selectedTimeType,
@@ -104,7 +104,11 @@ class RandomMatchmakingActivity : AppCompatActivity() {
                     }.addOnSuccessListener { matched ->
                         if (matched) {
                             Toast.makeText(this, "🎮 Opponent matched!", Toast.LENGTH_SHORT).show()
-                            startActivity(Intent(this, ActiveGamesActivity::class.java))
+
+                            // Directly go to the main activity instead of ActiveGamesActivity
+                            val intent = Intent(this, MainActivity::class.java)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            startActivity(intent)
                             finish()
                         }
                     }.addOnFailureListener { e ->
@@ -113,7 +117,7 @@ class RandomMatchmakingActivity : AppCompatActivity() {
                     }
 
                 } else {
-                    // 3. Kuyrukta rakip yoksa, kendini ekle
+                    // 3. If no opponent in queue, add yourself
                     val waitingPlayer = mapOf(
                         "userId" to currentUserId,
                         "userName" to currentUserName,
@@ -128,7 +132,7 @@ class RandomMatchmakingActivity : AppCompatActivity() {
                             Toast.makeText(this, "⏳ Added to queue. Waiting...", Toast.LENGTH_SHORT).show()
                             listenForMatchedGame()
 
-                            timeoutHandler = Handler(mainLooper)
+                            timeoutHandler = Handler(Looper.getMainLooper())
                             timeoutRunnable = Runnable {
                                 Toast.makeText(this, "❌ No opponent found. Try again later.", Toast.LENGTH_LONG).show()
                                 finish()
@@ -146,11 +150,10 @@ class RandomMatchmakingActivity : AppCompatActivity() {
             }
     }
 
-
     private fun listenForMatchedGame() {
         db.collection("game_requests")
             .whereEqualTo("receiverId", currentUserId)
-            .whereEqualTo("status", "pending")
+            .whereEqualTo("status", "accepted") // Changed from "pending" to "accepted"
             .addSnapshotListener { snapshots, error ->
                 if (error != null) {
                     Toast.makeText(this, "Snapshot error: ${error.message}", Toast.LENGTH_SHORT).show()
@@ -159,19 +162,17 @@ class RandomMatchmakingActivity : AppCompatActivity() {
 
                 if (snapshots != null && !snapshots.isEmpty) {
                     val matchedGame = snapshots.documents[0]
-                    val gameId = matchedGame.id
 
                     Toast.makeText(this, "Match found! Starting game...", Toast.LENGTH_SHORT).show()
 
-                    // Oyuna yönlendir
-                    val intent = Intent(this, ActiveGamesActivity::class.java)
+                    // Go to the main activity directly
+                    val intent = Intent(this, MainActivity::class.java)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                     startActivity(intent)
                     finish()
-
                 }
             }
     }
-
 
     override fun onDestroy() {
         super.onDestroy()
