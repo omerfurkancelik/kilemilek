@@ -31,7 +31,9 @@ data class GameData(
     val lastMove: LastMove = LastMove(),
     val gameBoard: List<List<Int>> = emptyList(), // Optional: store the board layout
     val timeLimit: Long = 0,  // Milisaniye cinsinden süre limiti
-    val timeType: String = "" // "QUICK_2MIN", "QUICK_5MIN", "EXTENDED_12HOUR", "EXTENDED_24HOUR"
+    val timeType: String = "", // "QUICK_2MIN", "QUICK_5MIN", "EXTENDED_12HOUR", "EXTENDED_24HOUR"
+    val passCount: Int = 0, // Count of consecutive passes
+    val endReason: String = "" // Reason for game ending (e.g., "consecutive_passes")
 )
 
 data class LastMove(

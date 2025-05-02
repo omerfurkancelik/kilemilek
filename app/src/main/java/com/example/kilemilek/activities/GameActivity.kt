@@ -12,12 +12,15 @@ import android.os.CountDownTimer
 import android.util.Log
 import android.util.TypedValue
 import android.view.DragEvent
+import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.GridLayout
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -52,6 +55,7 @@ class GameActivity : AppCompatActivity() {
     private lateinit var letterRackLayout: LinearLayout
     private lateinit var playButton: Button
     private lateinit var withdrawButton: Button
+    private lateinit var actionsButton: Button
     private lateinit var timeRemainingTextView: TextView
 
     private lateinit var gameId: String
@@ -81,6 +85,7 @@ class GameActivity : AppCompatActivity() {
     private var currentDraggedView: View? = null
     private var dragSourceIsBoard = false
     private var dragSourcePosition: Pair<Int, Int>? = null
+    private val jokerPositions = mutableSetOf<Pair<Int, Int>>()
 
     // Game state flags
     private var isFirstMoveInGame = false
@@ -98,11 +103,12 @@ class GameActivity : AppCompatActivity() {
 
         // Enable back button in the action bar
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Word Finder Game"
+        supportActionBar?.title = "Kilemilek"
 
         // Initialize views
         gameBoardView = findViewById(R.id.game_board_view)
-        gameIdTextView = findViewById(R.id.game_id_text)
+        // Remove the gameIdTextView initialization
+        // gameIdTextView = findViewById(R.id.game_id_text)
         opponentNameTextView = findViewById(R.id.opponent_name_text)
         yourScoreTextView = findViewById(R.id.your_score_text)
         opponentScoreTextView = findViewById(R.id.opponent_score_text)
@@ -111,6 +117,10 @@ class GameActivity : AppCompatActivity() {
         playButton = findViewById(R.id.play_button)
         withdrawButton = findViewById(R.id.withdraw_button)
         shuffleButton = findViewById(R.id.shuffle_button)
+        actionsButton = findViewById(R.id.actions_button)
+
+        // Setup Actions button
+        setupActionsButton()
 
         loadDictionary()
 
@@ -172,6 +182,245 @@ class GameActivity : AppCompatActivity() {
         // Load game data
         loadGameData()
     }
+
+    private fun showResignConfirmation() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Resign Game")
+            .setMessage("Are you sure you want to resign? This will end the game and you will lose.")
+            .setPositiveButton("Resign") { _, _ ->
+                resignGame()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showPassConfirmation() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Pass Turn")
+            .setMessage("Are you sure you want to pass your turn? If there are 3 consecutive passes, the game will end.")
+            .setPositiveButton("Pass") { _, _ ->
+                passTurn()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun resignGame() {
+        // Cancel any active countdown timer
+        countDownTimer?.cancel()
+
+        // Get opponent ID
+        val opponentId = if (gameRequest.senderId == currentUserId) {
+            gameRequest.receiverId
+        } else {
+            gameRequest.senderId
+        }
+
+        // Update game status to completed, set winner to opponent
+        db.collection("game_requests").document(gameId)
+            .update(
+                mapOf(
+                    "status" to "completed",
+                    "winnerId" to opponentId,
+                    "lastUpdatedAt" to System.currentTimeMillis()
+                )
+            )
+            .addOnSuccessListener {
+                Toast.makeText(this, "You resigned. Game over.", Toast.LENGTH_SHORT).show()
+                finish()
+            }
+            .addOnFailureListener { exception ->
+                Toast.makeText(this, "Error resigning: ${exception.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun passTurn() {
+        // Cancel any active countdown timer
+        countDownTimer?.cancel()
+
+        // Get opponent ID
+        val opponentId = if (gameRequest.senderId == currentUserId) {
+            gameRequest.receiverId
+        } else {
+            gameRequest.senderId
+        }
+
+        // Get current pass count from game data
+        val passCount = gameRequest.gameData.passCount ?: 0
+        val newPassCount = passCount + 1
+
+        // Check if this is the third consecutive pass
+        if (newPassCount >= 3) {
+            endGameDueToConsecutivePasses()
+            return
+        }
+
+        // Current time
+        val currentTime = System.currentTimeMillis()
+
+        // Calculate next move deadline
+        val newMoveDeadline = currentTime + gameTimeLimit
+
+        // Update game data with pass information
+        val updatedGameData = gameRequest.gameData.copy(
+            playerTurn = opponentId,
+            passCount = newPassCount,
+            lastMove = LastMove(
+                playerId = currentUserId,
+                word = "PASS",
+                points = 0,
+                timestamp = currentTime
+            )
+        )
+
+        // Update Firestore
+        db.collection("game_requests").document(gameId)
+            .update(
+                mapOf(
+                    "gameData" to updatedGameData,
+                    "lastUpdatedAt" to currentTime,
+                    "moveDeadline" to newMoveDeadline
+                )
+            )
+            .addOnSuccessListener {
+                Toast.makeText(this, "Turn passed to opponent", Toast.LENGTH_SHORT).show()
+                finish()
+            }
+            .addOnFailureListener { exception ->
+                Toast.makeText(this, "Error passing turn: ${exception.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun endGameDueToConsecutivePasses() {
+        // Three consecutive passes - end the game
+        // The player with higher score wins
+
+        // Get player scores
+        val yourScore = gameRequest.gameData.playerScores[currentUserId] ?: 0
+        val opponentId = if (gameRequest.senderId == currentUserId) {
+            gameRequest.receiverId
+        } else {
+            gameRequest.senderId
+        }
+        val opponentScore = gameRequest.gameData.playerScores[opponentId] ?: 0
+
+        // Determine winner
+        val winnerId = if (yourScore > opponentScore) {
+            currentUserId
+        } else if (opponentScore > yourScore) {
+            opponentId
+        } else {
+            // It's a tie - no winner
+            ""
+        }
+
+        // Update game status to completed
+        db.collection("game_requests").document(gameId)
+            .update(
+                mapOf(
+                    "status" to "completed",
+                    "winnerId" to winnerId,
+                    "lastUpdatedAt" to System.currentTimeMillis(),
+                    "gameData.endReason" to "consecutive_passes"
+                )
+            )
+            .addOnSuccessListener {
+                val resultMessage = when {
+                    winnerId == currentUserId -> "Game ended due to 3 consecutive passes. You won!"
+                    winnerId == opponentId -> "Game ended due to 3 consecutive passes. You lost."
+                    else -> "Game ended due to 3 consecutive passes. It's a tie!"
+                }
+
+                Toast.makeText(this, resultMessage, Toast.LENGTH_SHORT).show()
+                finish()
+            }
+            .addOnFailureListener { exception ->
+                Toast.makeText(this, "Error ending game: ${exception.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun showJokerLetterSelection(position: Pair<Int, Int>) {
+        // Create a dialog to select a letter
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Select Letter for Joker")
+            .setCancelable(false)
+            .create()
+
+        // Create the layout for letter selection
+        val layout = LayoutInflater.from(this).inflate(R.layout.dialog_joker_selection, null)
+        val letterGrid = layout.findViewById<GridLayout>(R.id.joker_letter_grid)
+
+        // Turkish alphabet letters to choose from
+        val turkishLetters = listOf(
+            'A', 'B', 'C', 'Ç', 'D', 'E', 'F', 'G', 'Ğ', 'H', 'I', 'İ', 'J', 'K', 'L',
+            'M', 'N', 'O', 'Ö', 'P', 'R', 'S', 'Ş', 'T', 'U', 'Ü', 'V', 'Y', 'Z'
+        )
+
+        // Add buttons for each letter
+        for (letter in turkishLetters) {
+            val button = Button(this).apply {
+                text = letter.toString()
+                layoutParams = GridLayout.LayoutParams().apply {
+                    width = resources.getDimensionPixelSize(R.dimen.joker_button_width)
+                    height = resources.getDimensionPixelSize(R.dimen.joker_button_height)
+                    setMargins(4, 4, 4, 4)
+                }
+                setOnClickListener {
+                    // Place the selected letter on the board (as a joker)
+                    placeJokerLetter(position, letter)
+                    dialog.dismiss()
+                }
+            }
+            letterGrid.addView(button)
+        }
+
+        dialog.setView(layout)
+        dialog.show()
+    }
+
+    private fun placeJokerLetter(position: Pair<Int, Int>, letter: Char) {
+        // Place the selected letter as a joker (with 0 value)
+        gameBoardView.placeLetter(position.first, position.second, letter)
+
+        // Mark this as a joker in the current turn letters
+        currentTurnLetters[position] = letter
+
+        // Also store that this is a joker (for scoring)
+        jokerPositions.add(position)
+
+        // Maybe update UI or other game state as needed
+        updateLetterRackUI()
+    }
+
+
+
+    private fun setupActionsButton() {
+        actionsButton.setOnClickListener {
+            val popupMenu = PopupMenu(this, actionsButton)
+
+            // Inflate the menu resource
+            popupMenu.menuInflater.inflate(R.menu.game_actions_menu, popupMenu.menu)
+
+            // Set up click listener for menu items
+            popupMenu.setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    R.id.action_resign -> {
+                        showResignConfirmation()
+                        true
+                    }
+                    R.id.action_pass -> {
+                        showPassConfirmation()
+                        true
+                    }
+                    else -> false
+                }
+            }
+
+            // Show the popup menu
+            popupMenu.show()
+        }
+    }
+
 
     private fun loadDictionary() {
         // Show loading indicator
@@ -378,7 +627,6 @@ class GameActivity : AppCompatActivity() {
 
     private fun updateGameUI() {
         // Set game ID
-        gameIdTextView.text = "Game ID: $gameId"
 
         // Set opponent name
         val opponentName = if (gameRequest.senderId == currentUserId) {
@@ -779,6 +1027,24 @@ class GameActivity : AppCompatActivity() {
                         if (placedLetters.containsKey(Pair(row, col)) || currentTurnLetters.containsKey(Pair(row, col))) {
                             Toast.makeText(this, "Cannot place a letter on top of another letter", Toast.LENGTH_SHORT).show()
                             returnToRack()
+                            return@setOnDragListener true
+                        }
+
+                        if (currentDraggedLetter == '*') {
+                            // This is a joker, show letter selection dialog
+                            val position = Pair(row, col)
+
+                            // First remove the joker from player's rack
+                            val index = playerLetters.indexOf('*')
+                            if (index >= 0) {
+                                playerLetters.removeAt(index)
+                                view.postDelayed({
+                                    updateLetterRackUI()
+                                }, 100)
+                            }
+
+                            // Show letter selection dialog
+                            showJokerLetterSelection(position)
                             return@setOnDragListener true
                         }
 
@@ -1318,10 +1584,16 @@ class GameActivity : AppCompatActivity() {
             boardStateMap["${position.first},${position.second}"] = letter.toString()
         }
 
-        // Calculate score (very basic implementation for now)
+        // Calculate score (with joker handling)
         val playScore = currentTurnLetters.entries.sumOf { (position, letter) ->
             val tileType = GameBoardMatrix.getTileType(position.first, position.second)
-            var letterValue = LetterDistribution.getLetterValue(letter)
+
+            // Check if this letter is a joker (worth 0 points)
+            var letterValue = if (jokerPositions.contains(position)) {
+                0 // Jokers are worth 0 points
+            } else {
+                LetterDistribution.getLetterValue(letter)
+            }
 
             // Apply letter multipliers
             when (tileType) {
@@ -1362,11 +1634,14 @@ class GameActivity : AppCompatActivity() {
         // Update the current player's letters
         updatedLettersMap[currentUserId] = playerLetters.map { it.toString() }
 
-        // Şu anki zaman
+        // Current time
         val currentTime = System.currentTimeMillis()
 
-        // Bir sonraki hamle için son tarih hesaplama
+        // Calculate next move deadline
         val newMoveDeadline = currentTime + gameTimeLimit
+
+        // Reset the pass count since a word was played
+        val passCount = 0
 
         // Update game data - preserve time limit settings
         val updatedGameData = GameData(
@@ -1382,7 +1657,8 @@ class GameActivity : AppCompatActivity() {
                 timestamp = currentTime
             ),
             timeLimit = gameTimeLimit,  // Preserve the original time limit
-            timeType = gameTimeType     // Preserve the original time type
+            timeType = gameTimeType,    // Preserve the original time type
+            passCount = passCount       // Reset pass count since a word was played
         )
 
         // Update Firestore - THIS IS THE ONLY PLACE WE UPDATE FIREBASE
@@ -1399,6 +1675,9 @@ class GameActivity : AppCompatActivity() {
 
                 // Clear current turn letters as they're now part of the board
                 currentTurnLetters.clear()
+
+                // Clear joker positions
+                jokerPositions.clear()
 
                 // Navigate back to the main activity
                 finish()
