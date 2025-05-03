@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.ProgressDialog.show
 import android.content.ClipData
 import android.content.ClipDescription
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Build
@@ -19,25 +20,38 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.GridLayout
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.content.ContextCompat
+import com.google.android.material.badge.BadgeDrawable
+import com.google.android.material.badge.BadgeUtils
 import androidx.core.content.res.ResourcesCompat
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.kilemilek.objects.LetterDistribution
 import com.example.kilemilek.R
+import com.example.kilemilek.models.BoardPowerup
 import com.example.kilemilek.models.GameData
 import com.example.kilemilek.models.GameRequestModel
 import com.example.kilemilek.models.LastMove
+import com.example.kilemilek.models.MinePowerupType
+import com.example.kilemilek.models.PowerupManager
+import com.example.kilemilek.models.PowerupResult
 import com.example.kilemilek.objects.GameBoardMatrix
 import com.example.kilemilek.utils.BoardWordValidator
 import com.example.kilemilek.utils.TurkishDictionary
 import com.example.kilemilek.views.GameBoardView
+import com.google.android.material.badge.ExperimentalBadgeUtils
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -94,6 +108,12 @@ class GameActivity : AppCompatActivity() {
     private lateinit var boardValidator: BoardWordValidator
     private var isDictionaryLoaded = false
 
+    private lateinit var powerupManager: PowerupManager
+    private lateinit var powerupsLayout: LinearLayout
+    private var hasTriggeredMine = false
+    private var lastMineResult: PowerupResult? = null
+    private var isMineResultProcessed = true
+
 
     @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("ClickableViewAccessibility")
@@ -123,6 +143,8 @@ class GameActivity : AppCompatActivity() {
         setupActionsButton()
 
         loadDictionary()
+
+        initializePowerupSystem()
 
         // Dinamik olarak time_remaining_text oluştur veya bul
         try {
@@ -182,6 +204,275 @@ class GameActivity : AppCompatActivity() {
         // Load game data
         loadGameData()
     }
+
+
+    private fun initializePowerupSystem() {
+        // Initialize powerup manager
+        powerupManager = PowerupManager()
+
+        // Create powerups layout if it doesn't exist
+        if (!::powerupsLayout.isInitialized) {
+            powerupsLayout = LinearLayout(this).apply {
+                id = View.generateViewId()
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = ConstraintLayout.LayoutParams(
+                    ConstraintLayout.LayoutParams.WRAP_CONTENT,
+                    ConstraintLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    // Position below the button container
+                    topToBottom = R.id.letter_rack_card
+                    bottomToTop = R.id.buttons_container
+                    startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                    endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+                    topMargin = 16
+                    bottomMargin = 16
+                }
+                gravity = android.view.Gravity.CENTER
+            }
+
+            // Add to the layout
+            val parentLayout = findViewById<ConstraintLayout>(R.id.game_container)
+            parentLayout.addView(powerupsLayout)
+        }
+    }
+
+
+    private fun updatePowerupsInFirebase() {
+        val powerupsData = powerupManager.toFirestoreMap()
+
+        db.collection("game_requests").document(gameId)
+            .update("gameData.powerups", powerupsData)
+            .addOnFailureListener { exception ->
+                Log.e("GameActivity", "Error saving powerups: ${exception.message}")
+            }
+    }
+
+
+    private fun updatePowerupsUI() {
+        // Clear existing powerups
+        powerupsLayout.removeAllViews()
+
+        // Get player's active powerups
+        val playerPowerups = powerupManager.getPlayerPowerups(currentUserId)
+
+        // Group powerups by type to avoid duplicates
+        val powerupCounts = playerPowerups.groupingBy { it }.eachCount()
+
+        // Create a button for each type of powerup
+        powerupCounts.forEach { (powerupType, count) ->
+            val powerupButton = createPowerupButton(powerupType, count)
+            powerupsLayout.addView(powerupButton)
+        }
+
+        // Make the layout visible or gone based on if there are powerups
+        powerupsLayout.visibility = if (playerPowerups.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+
+    @OptIn(ExperimentalBadgeUtils::class)
+    private fun createPowerupButton(powerupType: MinePowerupType, count: Int): ImageButton {
+        val buttonSize = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, 48f, resources.displayMetrics
+        ).toInt()
+
+        // Create icon based on powerup type
+        val icon = when (powerupType) {
+            MinePowerupType.REGION_BAN -> R.drawable.ic_region_ban
+            MinePowerupType.LETTER_BAN -> R.drawable.ic_letter_ban
+            MinePowerupType.EXTRA_MOVE -> R.drawable.ic_extra_move
+            else -> R.drawable.ic_powerup // Generic fallback
+        }
+
+        // Create button
+        val button = ImageButton(this).apply {
+            id = View.generateViewId()
+            layoutParams = LinearLayout.LayoutParams(buttonSize, buttonSize).apply {
+                marginEnd = TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP, 8f, resources.displayMetrics
+                ).toInt()
+            }
+            setImageResource(icon)
+            backgroundTintList = ColorStateList.valueOf(
+                when (powerupType) {
+                    MinePowerupType.REGION_BAN -> Color.parseColor("#4CAF50") // Green
+                    MinePowerupType.LETTER_BAN -> Color.parseColor("#2196F3") // Blue
+                    MinePowerupType.EXTRA_MOVE -> Color.parseColor("#FFC107") // Yellow
+                    else -> Color.parseColor("#9C27B0") // Purple
+                }
+            )
+            contentDescription = "Use ${powerupType.name} powerup"
+
+            // Add count badge
+            if (count > 1) {
+                val badgeDrawable = BadgeDrawable.create(this@GameActivity)
+                badgeDrawable.number = count
+                badgeDrawable.badgeGravity = BadgeDrawable.TOP_END
+
+                // We need to wrap the badge on a post to ensure the view is laid out
+                post {
+                    BadgeUtils.attachBadgeDrawable(badgeDrawable, this, null)
+                }
+            }
+
+            // Set click listener
+            setOnClickListener {
+                showPowerupConfirmationDialog(powerupType)
+            }
+        }
+
+        return button
+    }
+
+    private fun showPowerupConfirmationDialog(powerupType: MinePowerupType) {
+        // Only allow using powerups on player's turn
+        if (gameRequest.gameData.playerTurn != currentUserId) {
+            Toast.makeText(this, "You can only use powerups on your turn", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Create dialog message based on powerup type
+        val message = when (powerupType) {
+            MinePowerupType.REGION_BAN ->
+                "This will restrict your opponent to only place letters on one half of the board for their next turn. Use now?"
+
+            MinePowerupType.LETTER_BAN ->
+                "This will freeze 2 random letters in your opponent's rack for their next turn. Use now?"
+
+            MinePowerupType.EXTRA_MOVE ->
+                "This will give you an extra turn after your current turn. Use now?"
+
+            else -> "Do you want to use this powerup?"
+        }
+
+        // Show confirmation dialog
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Use ${powerupType.name.replace('_', ' ')}?")
+            .setMessage(message)
+            .setPositiveButton("Use") { _, _ ->
+                usePowerup(powerupType)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+
+
+    private fun usePowerup(powerupType: MinePowerupType) {
+        // Get opponent's letters (if needed for Letter Ban)
+        val opponentId = if (gameRequest.senderId == currentUserId) {
+            gameRequest.receiverId
+        } else {
+            gameRequest.senderId
+        }
+
+        var opponentLetters = listOf<Char>()
+
+        if (powerupType == MinePowerupType.LETTER_BAN) {
+            // Get opponent's letters from the game data
+            val opponentLetterStrs = gameRequest.gameData.playerLetters[opponentId] ?: emptyList()
+            opponentLetters = opponentLetterStrs.mapNotNull { if (it.isNotEmpty()) it[0] else null }
+        }
+
+        // Use the powerup
+        val result = powerupManager.usePlayerPowerup(
+            powerupType,
+            currentUserId,
+            opponentId,
+            opponentLetters
+        )
+
+        // Show result to user
+        Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+
+        if (result.success) {
+            // Update UI
+            updatePowerupsUI()
+
+            // Save to Firestore
+            updatePowerupsInFirebase()
+
+            // If it's an extra move, we need to handle that specially
+            if (powerupType == MinePowerupType.EXTRA_MOVE) {
+                // Flag that player will get an extra turn when submitting current play
+                // This flag will be checked in submitPlay method
+            }
+        }
+    }
+
+    private fun checkForMineAtPosition(row: Int, col: Int): BoardPowerup? {
+        if (!::powerupManager.isInitialized) {
+            return null
+        }
+
+        // Check if there's a mine or reward at this position
+        return powerupManager.getPowerupAt(row, col)
+    }
+
+
+    private fun placeLetterOnBoard(position: Pair<Int, Int>, letter: Char): Boolean {
+        // First check if the position is valid
+        if (position.first !in 0 until GameBoardMatrix.BOARD_SIZE ||
+            position.second !in 0 until GameBoardMatrix.BOARD_SIZE) {
+            return false
+        }
+
+        // Check if the position is banned due to a region ban
+        if (powerupManager.isPositionBanned(currentUserId, position.second)) {
+            Toast.makeText(this, "You can't place letters in this region due to a Region Ban", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        // Check if the letter is banned due to a letter ban
+        if (powerupManager.isLetterBanned(currentUserId, letter)) {
+            Toast.makeText(this, "This letter is frozen for this turn", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        // Check for mines or rewards at this position
+        val powerup = checkForMineAtPosition(position.first, position.second)
+
+        // Place the letter on the board
+        gameBoardView.placeLetter(position.first, position.second, letter)
+        currentTurnLetters[position] = letter
+
+        // If there was a powerup, mark it as triggered
+        if (powerup != null && powerup.isActive) {
+            hasTriggeredMine = true
+
+            // We'll process the mine effect when the play is submitted
+            // Just return true for now to allow the letter placement
+        }
+
+        return true
+    }
+
+
+
+    private fun loadPowerups() {
+        if (!::powerupManager.isInitialized) {
+            initializePowerupSystem()
+        }
+
+        // Check if powerups already exist in game data
+        val powerupsData = gameRequest.gameData.powerups
+
+        if (powerupsData != null) {
+            // Load existing powerups from Firestore
+            powerupManager.loadFromFirestore(powerupsData)
+        } else {
+            // Generate new powerups if this is a new game
+            powerupManager.generatePowerups()
+
+            // Save to Firestore only if this is the first player in a new game
+            if (isFirstMoveInGame && currentUserId == gameRequest.senderId) {
+                updatePowerupsInFirebase()
+            }
+        }
+
+        // Update powerups UI
+        updatePowerupsUI()
+    }
+
 
     private fun showResignConfirmation() {
         MaterialAlertDialogBuilder(this)
@@ -510,6 +801,8 @@ class GameActivity : AppCompatActivity() {
                         return@addOnSuccessListener
                     }
 
+                    loadPowerups()
+
                     // Determine if this is the first move in the game
                     isFirstMoveInGame = gameRequest.gameData.boardState.isEmpty()
 
@@ -541,6 +834,150 @@ class GameActivity : AppCompatActivity() {
                 Toast.makeText(this, "Error loading game: ${exception.message}", Toast.LENGTH_SHORT).show()
                 finish()
             }
+    }
+
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupLetterTouchListener(view: View, letter: Char) {
+        view.setOnTouchListener { v, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                try {
+                    // Start drag operation
+                    currentDraggedLetter = letter
+                    currentDraggedView = v
+                    dragSourceIsBoard = false
+                    dragSourcePosition = null
+
+                    val item = ClipData.Item(letter.toString())
+                    val dragData = ClipData(
+                        letter.toString(),
+                        arrayOf(ClipDescription.MIMETYPE_TEXT_PLAIN),
+                        item
+                    )
+
+                    val shadowBuilder = View.DragShadowBuilder(v)
+                    v.startDragAndDrop(
+                        dragData,
+                        shadowBuilder,
+                        v,
+                        0
+                    )
+
+                    // Hide the original view during drag
+                    v.visibility = View.INVISIBLE
+                    true
+                } catch (e: Exception) {
+                    Log.e("GameActivity", "Error starting drag: ${e.message}")
+                    v.visibility = View.VISIBLE
+                    false
+                }
+            } else {
+                false
+            }
+        }
+    }
+
+
+    private fun checkForMinesInCurrentWord() {
+        // Reset the triggered mine flag
+        hasTriggeredMine = false
+
+        // If powerup manager isn't initialized, skip
+        if (!::powerupManager.isInitialized) return
+
+        // Check each letter position for mines
+        for (position in currentTurnLetters.keys) {
+            val powerup = powerupManager.getPowerupAt(position.first, position.second)
+            if (powerup != null && powerup.isActive) {
+                // Found a mine/reward
+                hasTriggeredMine = true
+                break
+            }
+        }
+    }
+
+
+    override fun onResume() {
+        super.onResume()
+
+        // If we have a powerup manager, update the UI based on current state
+        if (::powerupManager.isInitialized) {
+            updatePowerupsUI()
+            updateLetterRackWithBannedLetters()
+
+            // If there's a region ban active, show a message
+            if (powerupManager.isPositionBanned(currentUserId, GameBoardMatrix.BOARD_SIZE / 2)) {
+                Toast.makeText(
+                    this,
+                    "Region ban active: You can only place letters on one side of the board!",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+
+    private fun setupGameDataListener() {
+        db.collection("game_requests").document(gameId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("GameActivity", "Error listening for game updates: ${error.message}")
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null && snapshot.exists()) {
+                    val updatedGame = snapshot.toObject(GameRequestModel::class.java) ?: return@addSnapshotListener
+
+                    // Update game request data
+                    gameRequest = updatedGame
+
+                    // Check if powerups data has changed
+                    val powerupsData = updatedGame.gameData.powerups
+                    if (powerupsData != null && ::powerupManager.isInitialized) {
+                        powerupManager.loadFromFirestore(powerupsData)
+                        updatePowerupsUI()
+                    }
+
+                    // Check if it's now the player's turn and they have banned letters
+                    if (updatedGame.gameData.playerTurn == currentUserId) {
+                        // Update UI to reflect any letter bans
+                        updateLetterRackWithBannedLetters()
+                    }
+
+                    // Continue with existing update logic...
+                }
+            }
+    }
+
+    private fun updateLetterRackWithBannedLetters() {
+        if (!::powerupManager.isInitialized) return
+
+        // For each letter in the rack, check if it's banned
+        for (i in 0 until letterRackLayout.childCount) {
+            val letterView = letterRackLayout.getChildAt(i)
+            if (letterView is CardView) {
+                val letter = letterView.tag as? Char ?: continue
+
+                // Check if this letter is banned
+                val isBanned = powerupManager.isLetterBanned(currentUserId, letter)
+
+                if (isBanned) {
+                    // Apply visual indication of banned status
+                    letterView.alpha = 0.5f
+
+                    // Disable touch
+                    letterView.isEnabled = false
+                    letterView.setOnTouchListener { _, _ -> true }
+                } else {
+                    // Reset to normal
+                    letterView.alpha = 1.0f
+                    letterView.isEnabled = true
+
+                    // Re-enable drag-and-drop by setting up the original touch listener
+                    setupLetterTouchListener(letterView, letter)
+                }
+            }
+        }
     }
 
 
@@ -1586,8 +2023,351 @@ class GameActivity : AppCompatActivity() {
         }
 
         // All validation passed, submit the play
-        submitPlay()
+
+        if (hasTriggeredMine) {
+            // Process mine effect
+            processMineEffects()
+        } else {
+            // No mines triggered, proceed with normal submission
+            submitPlay()
+        }
     }
+
+
+    private fun processMineEffects() {
+        // Get opponent ID
+        val opponentId = if (gameRequest.senderId == currentUserId) {
+            gameRequest.receiverId
+        } else {
+            gameRequest.senderId
+        }
+
+        // Find all triggered mines in current turn letters
+        val triggeredMines = mutableListOf<BoardPowerup>()
+
+        for (position in currentTurnLetters.keys) {
+            val powerup = powerupManager.getPowerupAt(position.first, position.second)
+            if (powerup != null && powerup.isActive) {
+                triggeredMines.add(powerup)
+            }
+        }
+
+        if (triggeredMines.isEmpty()) {
+            // No mines triggered after all, proceed with normal submission
+            submitPlay()
+            return
+        }
+
+        // Calculate score before mine effects
+        val word = currentTurnLetters.entries.sortedBy { it.key.first * 100 + it.key.second }
+            .joinToString("") { it.value.toString() }
+
+        // Calculate base score (sum of letter values)
+        val baseScore = currentTurnLetters.entries.sumOf { (position, letter) ->
+            val letterValue = if (jokerPositions.contains(position)) {
+                0 // Jokers are worth 0 points
+            } else {
+                LetterDistribution.getLetterValue(letter)
+            }
+            letterValue
+        }
+
+        // Process first mine encountered (for simplicity, we'll just process one even if multiple triggered)
+        val mine = triggeredMines.first()
+
+        // Process the mine effect
+        lastMineResult = powerupManager.processMineEffect(
+            mine,
+            currentUserId,
+            opponentId,
+            word,
+            baseScore,
+            playerLetters
+        )
+
+        // Show dialog with mine effect
+        showMineEffectDialog(mine.type, lastMineResult!!)
+    }
+
+
+    private fun showMineEffectDialog(mineType: MinePowerupType, result: PowerupResult) {
+        // Create appropriate title and icon based on mine type
+        val title = when (mineType) {
+            MinePowerupType.SCORE_SPLIT -> "Score Split!"
+            MinePowerupType.POINT_TRANSFER -> "Point Transfer!"
+            MinePowerupType.LETTER_LOSS -> "Letter Loss!"
+            MinePowerupType.EXTRA_MOVE_BARRIER -> "Extra Move Barrier!"
+            MinePowerupType.WORD_CANCELLATION -> "Word Cancelled!"
+            MinePowerupType.REGION_BAN -> "Reward Found: Region Ban"
+            MinePowerupType.LETTER_BAN -> "Reward Found: Letter Ban"
+            MinePowerupType.EXTRA_MOVE -> "Reward Found: Extra Move"
+        }
+
+        // Get icon resource based on mine type
+        val iconResource = when (mineType) {
+            MinePowerupType.SCORE_SPLIT -> R.drawable.ic_score_split
+            MinePowerupType.POINT_TRANSFER -> R.drawable.ic_point_transfer
+            MinePowerupType.LETTER_LOSS -> R.drawable.ic_letter_loss
+            MinePowerupType.EXTRA_MOVE_BARRIER -> R.drawable.ic_barrier
+            MinePowerupType.WORD_CANCELLATION -> R.drawable.ic_cancel
+            MinePowerupType.REGION_BAN -> R.drawable.ic_region_ban
+            MinePowerupType.LETTER_BAN -> R.drawable.ic_letter_ban
+            MinePowerupType.EXTRA_MOVE -> R.drawable.ic_extra_move
+        }
+
+        // Set dialog background color based on whether this is a mine (penalty) or reward
+        val isMine = mineType in listOf(
+            MinePowerupType.SCORE_SPLIT,
+            MinePowerupType.POINT_TRANSFER,
+            MinePowerupType.LETTER_LOSS,
+            MinePowerupType.EXTRA_MOVE_BARRIER,
+            MinePowerupType.WORD_CANCELLATION
+        )
+
+        // Create the dialog builder
+        val dialogBuilder = MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setCancelable(false)
+
+        // Inflate custom view for dialog content
+        val dialogView = layoutInflater.inflate(R.layout.dialog_mine_effect, null)
+
+        // Set up the dialog content
+        val iconView = dialogView.findViewById<ImageView>(R.id.mine_icon)
+        val messageView = dialogView.findViewById<TextView>(R.id.mine_effect_text)
+
+        // Set icon and message
+        iconView.setImageResource(iconResource)
+        messageView.text = result.message ?: "Effect will be applied when you continue."
+
+        // Apply color tint to the icon based on mine type
+        val colorTint = when (mineType) {
+            MinePowerupType.SCORE_SPLIT,
+            MinePowerupType.POINT_TRANSFER,
+            MinePowerupType.LETTER_LOSS,
+            MinePowerupType.EXTRA_MOVE_BARRIER,
+            MinePowerupType.WORD_CANCELLATION -> Color.parseColor("#E53935") // Red for mines
+
+            MinePowerupType.REGION_BAN -> Color.parseColor("#4CAF50") // Green
+            MinePowerupType.LETTER_BAN -> Color.parseColor("#2196F3") // Blue
+            MinePowerupType.EXTRA_MOVE -> Color.parseColor("#FFC107") // Yellow
+        }
+
+        // Apply the color tint
+        DrawableCompat.setTint(
+            DrawableCompat.wrap(iconView.drawable).mutate(),
+            colorTint
+        )
+
+        // Set the dialog view
+        dialogBuilder.setView(dialogView)
+
+        // Add continue button
+        dialogBuilder.setPositiveButton("Continue") { _, _ ->
+            // Process the result after dialog is dismissed
+            processMineResultAndSubmitPlay(result)
+        }
+
+        // Create and show the dialog
+        val dialog = dialogBuilder.create()
+
+        // Apply rounded corners to dialog
+        dialog.window?.setBackgroundDrawableResource(R.drawable.dialog_rounded_background)
+
+        // Show the dialog
+        dialog.show()
+
+        // Style the continue button
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.let { button ->
+            button.setTextColor(ContextCompat.getColor(this, R.color.primary))
+        }
+    }
+
+
+    private fun processMineResultAndSubmitPlay(result: PowerupResult) {
+        // Mark that we've processed this mine result
+        isMineResultProcessed = true
+
+        // Apply visual effects based on mine type
+        when {
+            // Score Split - show animation of points being reduced
+            result.updatedPoints < calculateBaseScore() -> {
+                showScoreChangeAnimation(calculateBaseScore(), result.updatedPoints)
+            }
+
+            // Point Transfer - show animation of points going to opponent
+            result.transferPointsToOpponent -> {
+                showPointTransferAnimation(result.pointsToTransfer)
+            }
+
+            // Letter Loss - show animation of letters being replaced
+            result.replaceLetters -> {
+                // First store current letters for animation
+                val oldLetters = ArrayList(playerLetters)
+
+                // Replace all player letters
+                playerLetters.clear()
+                playerLetters.addAll(LetterDistribution.drawLetters(7))
+
+                // Show animation
+                showLetterReplaceAnimation(oldLetters, playerLetters)
+            }
+        }
+
+        // Add any rewards to player's powerup inventory
+        if (result.rewardsGained.isNotEmpty()) {
+            // The rewards were already added in PowerupManager.processMineEffect
+            // Just update the UI to show them
+            updatePowerupsUI()
+
+            // Show a subtle highlight animation on the new powerups
+            highlightNewPowerups(result.rewardsGained)
+        }
+
+        // If the effect includes transferring points to opponent
+        if (result.transferPointsToOpponent && result.pointsToTransfer > 0) {
+            // Show a toast with the transfer information
+            Toast.makeText(
+                this,
+                "${result.pointsToTransfer} points transferred to opponent!",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        // Continue with play submission with updated score
+        submitPlayWithMineEffects(result)
+    }
+
+
+    private fun calculateBaseScore(): Int {
+        // First calculate the letter points without multipliers
+        val letterPoints = currentTurnLetters.entries.sumOf { (position, letter) ->
+            if (jokerPositions.contains(position)) {
+                0 // Jokers are worth 0 points
+            } else {
+                LetterDistribution.getLetterValue(letter)
+            }
+        }
+
+        // Then apply tile multipliers
+        var wordMultiplier = 1
+        val wordPoints = currentTurnLetters.entries.sumOf { (position, letter) ->
+            val tileType = GameBoardMatrix.getTileType(position.first, position.second)
+
+            // Get base letter value
+            var letterValue = if (jokerPositions.contains(position)) {
+                0 // Jokers are worth 0 points
+            } else {
+                LetterDistribution.getLetterValue(letter)
+            }
+
+            // Apply letter multipliers
+            when (tileType) {
+                GameBoardMatrix.DL -> letterValue *= 2 // Double Letter
+                GameBoardMatrix.TL -> letterValue *= 3 // Triple Letter
+            }
+
+            // Track word multipliers
+            when (tileType) {
+                GameBoardMatrix.DW -> wordMultiplier *= 2 // Double Word
+                GameBoardMatrix.TW -> wordMultiplier *= 3 // Triple Word
+            }
+
+            letterValue
+        }
+
+        // Apply word multiplier to get final score
+        return wordPoints * wordMultiplier
+    }
+
+
+    private fun showScoreChangeAnimation(originalScore: Int, newScore: Int) {
+        // This would be implemented with ValueAnimator
+        // For now, just update the UI
+        val scoreView = TextView(this).apply {
+            text = "$originalScore → $newScore"
+            textSize = 20f
+            setTextColor(Color.RED)
+            alpha = 0f
+        }
+
+        // Add to layout temporarily
+        val rootView = findViewById<ViewGroup>(android.R.id.content)
+        rootView.addView(scoreView, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        // Position in center
+        scoreView.x = (rootView.width - scoreView.width) / 2f
+        scoreView.y = (rootView.height - scoreView.height) / 2f
+
+        // Animate in and out
+        scoreView.animate()
+            .alpha(1f)
+            .setDuration(500)
+            .withEndAction {
+                scoreView.animate()
+                    .alpha(0f)
+                    .setStartDelay(1000)
+                    .setDuration(500)
+                    .withEndAction {
+                        rootView.removeView(scoreView)
+                    }
+                    .start()
+            }
+            .start()
+    }
+
+
+    private fun showPointTransferAnimation(points: Int) {
+        // Similar to score change animation but with transfer visual
+        // For simplicity, we'll just use a toast for now
+        Toast.makeText(
+            this,
+            "$points points transferred to opponent!",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+
+    private fun showLetterReplaceAnimation(oldLetters: List<Char>, newLetters: List<Char>) {
+        // In a real implementation, this would animate the letter rack
+        // For now, just update the UI immediately
+        updateLetterRackUI()
+
+        // Show a toast
+        Toast.makeText(
+            this,
+            "Your letters have been replaced!",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun highlightNewPowerups(newPowerups: List<MinePowerupType>) {
+        // Find powerup buttons for the new powerups
+        for (i in 0 until powerupsLayout.childCount) {
+            val powerupButton = powerupsLayout.getChildAt(i)
+            val powerupType = powerupButton.tag as? MinePowerupType ?: continue
+
+            if (newPowerups.contains(powerupType)) {
+                // Animate the button to highlight it
+                powerupButton.animate()
+                    .scaleX(1.2f)
+                    .scaleY(1.2f)
+                    .setDuration(300)
+                    .withEndAction {
+                        powerupButton.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(300)
+                            .start()
+                    }
+                    .start()
+            }
+        }
+    }
+
 
 
     private fun areLettersInStraightLine(): Boolean {
@@ -1647,6 +2427,12 @@ class GameActivity : AppCompatActivity() {
 
 
     private fun submitPlay() {
+        // If there was a mine triggered but not processed, process it first
+        if (hasTriggeredMine && !isMineResultProcessed) {
+            processMineEffects()
+            return
+        }
+
         // Cancel the countdown timer when submitting a move
         countDownTimer?.cancel()
 
@@ -1704,6 +2490,18 @@ class GameActivity : AppCompatActivity() {
         // Determine next player's turn
         val opponentId = if (gameRequest.senderId == currentUserId) gameRequest.receiverId else gameRequest.senderId
 
+        // Check if player has extra move powerup
+        val hasExtraMove = powerupManager.hasExtraMove(currentUserId)
+
+        // Get next player (either opponent or self if extra move)
+        val nextPlayerId = if (hasExtraMove) currentUserId else opponentId
+
+        // If player used extra move, consume it
+        if (hasExtraMove) {
+            // This is handled in the PowerupManager when usePlayerPowerup is called
+            // Just need to update the Firestore data with new powerup inventory
+        }
+
         // Draw new letters to fill the rack
         val newLetters = LetterDistribution.drawLetters(7 - playerLetters.size)
         playerLetters.addAll(newLetters)
@@ -1722,10 +2520,23 @@ class GameActivity : AppCompatActivity() {
         // Reset the pass count since a word was played
         val passCount = 0
 
+        // Update powerups data (if PowerupManager is initialized)
+        val powerupsData = if (::powerupManager.isInitialized) {
+            powerupManager.toFirestoreMap()
+        } else {
+            gameRequest.gameData.powerups
+        }
+
+        // Clear region ban and banned letters after turn
+        if (::powerupManager.isInitialized) {
+            powerupManager.clearBannedLetters(currentUserId)
+            powerupManager.clearRegionBan(currentUserId)
+        }
+
         // Update game data - preserve time limit settings
         val updatedGameData = GameData(
             boardState = boardStateMap,
-            playerTurn = opponentId, // Switch turn to opponent
+            playerTurn = nextPlayerId, // Switch turn (to opponent or self if extra move)
             playerScores = playerScores,
             playerLetters = updatedLettersMap,
             lastMove = LastMove(
@@ -1737,10 +2548,11 @@ class GameActivity : AppCompatActivity() {
             ),
             timeLimit = gameTimeLimit,  // Preserve the original time limit
             timeType = gameTimeType,    // Preserve the original time type
-            passCount = passCount       // Reset pass count since a word was played
+            passCount = passCount,      // Reset pass count since a word was played
+            powerups = powerupsData     // Store powerups data
         )
 
-        // Update Firestore - THIS IS THE ONLY PLACE WE UPDATE FIREBASE
+        // Update Firestore
         db.collection("game_requests").document(gameId)
             .update(
                 mapOf(
@@ -1750,7 +2562,13 @@ class GameActivity : AppCompatActivity() {
                 )
             )
             .addOnSuccessListener {
-                Toast.makeText(this, "Play submitted! Your score: +$finalScore", Toast.LENGTH_SHORT).show()
+                val message = if (hasExtraMove) {
+                    "Play submitted! Your score: +$finalScore. You get another turn!"
+                } else {
+                    "Play submitted! Your score: +$finalScore"
+                }
+
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
                 // Clear current turn letters as they're now part of the board
                 currentTurnLetters.clear()
@@ -1758,8 +2576,212 @@ class GameActivity : AppCompatActivity() {
                 // Clear joker positions
                 jokerPositions.clear()
 
-                // Navigate back to the main activity
-                finish()
+                // Reset mine triggered flag
+                hasTriggeredMine = false
+
+                // If player has extra move, don't finish the activity
+                if (hasExtraMove) {
+                    // Update UI for another turn
+                    updateGameUI()
+                    loadPlayerLetters()
+                } else {
+                    // Navigate back to the main activity
+                    finish()
+                }
+            }
+            .addOnFailureListener { exception ->
+                Toast.makeText(this, "Error submitting play: ${exception.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun submitPlayWithMineEffects(mineResult: PowerupResult) {
+        // Cancel the countdown timer when submitting a move
+        countDownTimer?.cancel()
+
+        // Create updated board state map (merging existing and new letters)
+        val boardStateMap = mutableMapOf<String, String>()
+
+        // Add existing letters
+        placedLetters.forEach { (position, letter) ->
+            boardStateMap["${position.first},${position.second}"] = letter.toString()
+        }
+
+        // Add new letters
+        currentTurnLetters.forEach { (position, letter) ->
+            boardStateMap["${position.first},${position.second}"] = letter.toString()
+        }
+
+        // Calculate score (with joker handling)
+        var playScore = currentTurnLetters.entries.sumOf { (position, letter) ->
+            val tileType = GameBoardMatrix.getTileType(position.first, position.second)
+
+            // Check if this letter is a joker (worth 0 points)
+            var letterValue = if (jokerPositions.contains(position)) {
+                0 // Jokers are worth 0 points
+            } else {
+                LetterDistribution.getLetterValue(letter)
+            }
+
+            // Apply letter multipliers if not ignoring multipliers
+            if (!mineResult.ignoreMultipliers) {
+                when (tileType) {
+                    GameBoardMatrix.DL -> letterValue *= 2 // Double Letter
+                    GameBoardMatrix.TL -> letterValue *= 3 // Triple Letter
+                }
+            }
+
+            letterValue
+        }
+
+        // Apply word multipliers if not ignoring multipliers
+        var wordMultiplier = 1
+        if (!mineResult.ignoreMultipliers) {
+            currentTurnLetters.keys.forEach { position ->
+                val tileType = GameBoardMatrix.getTileType(position.first, position.second)
+                when (tileType) {
+                    GameBoardMatrix.DW -> wordMultiplier *= 2 // Double Word
+                    GameBoardMatrix.TW -> wordMultiplier *= 3 // Triple Word
+                }
+            }
+        }
+
+        // Final score with word multiplier
+        val finalScoreBeforeMine = playScore * wordMultiplier
+
+        // Apply mine effect to score
+        val finalScore = mineResult.updatedPoints
+
+        // Get current player scores
+        val playerScores = gameRequest.gameData.playerScores.toMutableMap()
+        val currentScore = playerScores[currentUserId] ?: 0
+
+        // Update player score
+        playerScores[currentUserId] = currentScore + finalScore
+
+        // Handle point transfer if needed
+        if (mineResult.transferPointsToOpponent) {
+            val opponentId = if (gameRequest.senderId == currentUserId) gameRequest.receiverId else gameRequest.senderId
+            val opponentScore = playerScores[opponentId] ?: 0
+            playerScores[opponentId] = opponentScore + mineResult.pointsToTransfer
+        }
+
+        // Determine next player's turn
+        val opponentId = if (gameRequest.senderId == currentUserId) gameRequest.receiverId else gameRequest.senderId
+
+        // Check if player has extra move powerup
+        val hasExtraMove = powerupManager.hasExtraMove(currentUserId)
+
+        // Get next player (either opponent or self if extra move)
+        val nextPlayerId = if (hasExtraMove) currentUserId else opponentId
+
+        // If player used extra move, consume it
+        if (hasExtraMove) {
+            // This is handled when usePlayerPowerup is called
+            // Just need to ensure Firestore data is updated
+        }
+
+        // Handle letter loss if needed
+        if (mineResult.replaceLetters) {
+            // Replace all player letters
+            playerLetters.clear()
+            playerLetters.addAll(LetterDistribution.drawLetters(7))
+        } else {
+            // Draw new letters to fill the rack (normal behavior)
+            val newLetters = LetterDistribution.drawLetters(7 - playerLetters.size)
+            playerLetters.addAll(newLetters)
+        }
+
+        // Create a map of all players' letters
+        val updatedLettersMap = gameRequest.gameData.playerLetters.toMutableMap()
+        // Update the current player's letters
+        updatedLettersMap[currentUserId] = playerLetters.map { it.toString() }
+
+        // Current time
+        val currentTime = System.currentTimeMillis()
+
+        // Calculate next move deadline
+        val newMoveDeadline = currentTime + gameTimeLimit
+
+        // Reset the pass count since a word was played
+        val passCount = 0
+
+        // Update powerups data
+        val powerupsData = powerupManager.toFirestoreMap()
+
+        // Clear region ban and banned letters after turn
+        powerupManager.clearBannedLetters(currentUserId)
+        powerupManager.clearRegionBan(currentUserId)
+
+        // Add any new rewards from the mine result
+        if (mineResult.rewardsGained.isNotEmpty()) {
+            // The rewards were already added to player's inventory in processMineEffect
+            // Just ensure they will be saved in Firestore
+        }
+
+        // Update game data - preserve time limit settings
+        val updatedGameData = GameData(
+            boardState = boardStateMap,
+            playerTurn = nextPlayerId, // Switch turn (to opponent or self if extra move)
+            playerScores = playerScores,
+            playerLetters = updatedLettersMap,
+            lastMove = LastMove(
+                playerId = currentUserId,
+                word = currentTurnLetters.entries.sortedBy { it.key.first * 100 + it.key.second }
+                    .joinToString("") { it.value.toString() },
+                points = finalScore,
+                timestamp = currentTime
+            ),
+            timeLimit = gameTimeLimit,  // Preserve the original time limit
+            timeType = gameTimeType,    // Preserve the original time type
+            passCount = passCount,      // Reset pass count since a word was played
+            powerups = powerupsData     // Store powerups data
+        )
+
+        // Update Firestore
+        db.collection("game_requests").document(gameId)
+            .update(
+                mapOf(
+                    "gameData" to updatedGameData,
+                    "lastUpdatedAt" to currentTime,
+                    "moveDeadline" to newMoveDeadline
+                )
+            )
+            .addOnSuccessListener {
+                val message = if (mineResult.updatedPoints != finalScoreBeforeMine) {
+                    // Score was affected by mine
+                    "Play submitted! Score: $finalScoreBeforeMine → ${mineResult.updatedPoints}"
+                } else if (hasExtraMove) {
+                    "Play submitted! Your score: +$finalScore. You get another turn!"
+                } else {
+                    "Play submitted! Your score: +$finalScore"
+                }
+
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+                // Clear current turn letters as they're now part of the board
+                currentTurnLetters.clear()
+
+                // Clear joker positions
+                jokerPositions.clear()
+
+                // Reset mine triggered flag
+                hasTriggeredMine = false
+
+                // Reset mine result processed flag
+                isMineResultProcessed = true
+
+                // If player has extra move, don't finish the activity
+                if (hasExtraMove) {
+                    // Update UI for another turn
+                    updateGameUI()
+                    loadPlayerLetters()
+
+                    // Update powerups UI to reflect used extra move
+                    updatePowerupsUI()
+                } else {
+                    // Navigate back to the main activity
+                    finish()
+                }
             }
             .addOnFailureListener { exception ->
                 Toast.makeText(this, "Error submitting play: ${exception.message}", Toast.LENGTH_SHORT).show()
@@ -1779,5 +2801,11 @@ class GameActivity : AppCompatActivity() {
         super.onDestroy()
         // Cancel the countdown timer to avoid memory leaks
         countDownTimer?.cancel()
+
+        if (::powerupManager.isInitialized) {
+            // Make sure temporary effects don't persist if game is ended prematurely
+            powerupManager.clearBannedLetters(currentUserId)
+            powerupManager.clearRegionBan(currentUserId)
+        }
     }
 }

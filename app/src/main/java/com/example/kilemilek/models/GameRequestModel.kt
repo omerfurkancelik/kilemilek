@@ -33,7 +33,8 @@ data class GameData(
     val timeLimit: Long = 0,  // Milisaniye cinsinden süre limiti
     val timeType: String = "", // "QUICK_2MIN", "QUICK_5MIN", "EXTENDED_12HOUR", "EXTENDED_24HOUR"
     val passCount: Int = 0, // Count of consecutive passes
-    val endReason: String = "" // Reason for game ending (e.g., "consecutive_passes")
+    val endReason: String = "", // Reason for game ending (e.g., "consecutive_passes")
+    val powerups: Map<String, Any>? = null // Mine and powerup data
 )
 
 data class LastMove(
