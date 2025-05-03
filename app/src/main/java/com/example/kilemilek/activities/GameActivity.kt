@@ -195,6 +195,12 @@ class GameActivity : AppCompatActivity() {
     }
 
     private fun showPassConfirmation() {
+        // First check if it's the player's turn
+        if (gameRequest.gameData.playerTurn != currentUserId) {
+            Toast.makeText(this, "It's not your turn", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         MaterialAlertDialogBuilder(this)
             .setTitle("Pass Turn")
             .setMessage("Are you sure you want to pass your turn? If there are 3 consecutive passes, the game will end.")
@@ -401,6 +407,10 @@ class GameActivity : AppCompatActivity() {
             // Inflate the menu resource
             popupMenu.menuInflater.inflate(R.menu.game_actions_menu, popupMenu.menu)
 
+            // Only enable pass option if it's player's turn
+            val isPlayerTurn = gameRequest.gameData.playerTurn == currentUserId
+            popupMenu.menu.findItem(R.id.action_pass).isEnabled = isPlayerTurn
+
             // Set up click listener for menu items
             popupMenu.setOnMenuItemClickListener { menuItem ->
                 when (menuItem.itemId) {
@@ -409,7 +419,11 @@ class GameActivity : AppCompatActivity() {
                         true
                     }
                     R.id.action_pass -> {
-                        showPassConfirmation()
+                        if (isPlayerTurn) {
+                            showPassConfirmation()
+                        } else {
+                            Toast.makeText(this, "It's not your turn", Toast.LENGTH_SHORT).show()
+                        }
                         true
                     }
                     else -> false
@@ -437,11 +451,7 @@ class GameActivity : AppCompatActivity() {
                 if (result) {
                     boardValidator = BoardWordValidator(turkishDictionary)
                     Log.d("GameActivity", "Dictionary loaded successfully with ${turkishDictionary.dictionarySize()} words")
-                    Toast.makeText(
-                        this@GameActivity,
-                        "Dictionary loaded with ${turkishDictionary.dictionarySize()} words",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    //Toast.makeText(this@GameActivity, "Dictionary loaded with ${turkishDictionary.dictionarySize()} words", Toast.LENGTH_SHORT).show()
                 } else {
                     Log.e("GameActivity", "Failed to load dictionary")
                     Toast.makeText(
@@ -507,16 +517,21 @@ class GameActivity : AppCompatActivity() {
                     gameTimeLimit = gameRequest.gameData.timeLimit
                     gameTimeType = gameRequest.gameData.timeType
 
-                    // ✅ Sadece oyuncunun sırasıysa timer başlasın
-                    if (gameTimeLimit > 0 && gameRequest.gameData.playerTurn == currentUserId) {
+                    // Check if we're in view mode (finished game)
+                    val isViewMode = intent.getBooleanExtra("VIEW_MODE", false)
+
+                    // Start timer only if not in view mode and it's player's turn
+                    if (!isViewMode && gameTimeLimit > 0 && gameRequest.gameData.playerTurn == currentUserId) {
                         startCountdownTimer()
                     }
 
                     // Update UI
                     updateGameUI()
 
-                    // Load or initialize player letters
-                    loadPlayerLetters()
+                    // Load player letters only if not in view mode
+                    if (!isViewMode) {
+                        loadPlayerLetters()
+                    }
                 } else {
                     Toast.makeText(this, "Game not found", Toast.LENGTH_SHORT).show()
                     finish()
@@ -626,7 +641,8 @@ class GameActivity : AppCompatActivity() {
     }
 
     private fun updateGameUI() {
-        // Set game ID
+        // Check if we're in view mode (finished game)
+        val isViewMode = intent.getBooleanExtra("VIEW_MODE", false)
 
         // Set opponent name
         val opponentName = if (gameRequest.senderId == currentUserId) {
@@ -644,41 +660,12 @@ class GameActivity : AppCompatActivity() {
         yourScoreTextView.text = "Your score: $yourScore"
         opponentScoreTextView.text = "Opponent score: $opponentScore"
 
-        // Set remaining letters count
-        val remainingCount = LetterDistribution.getRemainingLetterCount()
-        remainingLettersTextView.text = "Remaining letters: $remainingCount"
-
-        // Display time info if available
-        if (gameTimeLimit > 0) {
-            val gameType = when (gameTimeType) {
-                "QUICK_2MIN" -> "Fast Game (2 min)"
-                "QUICK_5MIN" -> "Fast Game (5 min)"
-                "EXTENDED_12HOUR" -> "Extended Game (12 hours)"
-                "EXTENDED_24HOUR" -> "Extended Game (24 hours)"
-                else -> ""
-            }
-
-            // Ensure time remaining textview is visible
-            timeRemainingTextView.visibility = View.VISIBLE
-
-            // Game type bilgisini göster
-            val gameTypeTextView = TextView(this).apply {
-                textSize = 14f
-                setTextColor(Color.parseColor("#E53935"))
-                text = gameType
-                visibility = View.VISIBLE
-            }
-
-            // Ekle veya bilgiyi güncelle
-            val gameInfoCard = findViewById<CardView>(R.id.game_info_card)
-            val contentLayout = gameInfoCard.getChildAt(0) as ViewGroup
-            if (contentLayout.childCount > 3) {
-                // Game type text view zaten eklenmiş olabilir
-                (contentLayout.getChildAt(3) as? TextView)?.text = gameType
-            } else {
-                // Yeni ekle
-                contentLayout.addView(gameTypeTextView, 3)
-            }
+        // Set remaining letters count (hide in view mode)
+        if (isViewMode) {
+            remainingLettersTextView.visibility = View.GONE
+        } else {
+            val remainingCount = LetterDistribution.getRemainingLetterCount()
+            remainingLettersTextView.text = "Remaining letters: $remainingCount"
         }
 
         // Clear the placed letters tracking
@@ -692,58 +679,150 @@ class GameActivity : AppCompatActivity() {
                 val col = parts[1].toInt()
                 gameBoardView.placeLetter(row, col, letter[0])
 
-                // Track placed letters (these are from previous turns)
+                // Track placed letters
                 placedLetters[Pair(row, col)] = letter[0]
             } catch (e: Exception) {
                 // Skip invalid positions
             }
         }
 
-        // Check if it's the player's turn or opponent's turn
-        val isPlayerTurn = gameRequest.gameData.playerTurn == currentUserId
+        // If in view mode (finished game), hide all interactive elements
+        if (isViewMode) {
+            // Hide letter rack card
+            findViewById<CardView>(R.id.letter_rack_card).visibility = View.GONE
 
-        // Create or find the opponent turn message TextView
-        var opponentTurnMessage = findViewById<TextView>(R.id.opponent_turn_message)
-        if (opponentTurnMessage == null) {
-            // Create new TextView if it doesn't exist
-            opponentTurnMessage = TextView(this).apply {
-                id = R.id.opponent_turn_message
-                layoutParams = ConstraintLayout.LayoutParams(
-                    ConstraintLayout.LayoutParams.MATCH_PARENT,
-                    ConstraintLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    // Position it between game board and letter rack
-                    topToBottom = R.id.game_board_view
-                    bottomToTop = R.id.letter_rack_card
-                    startToStart = ConstraintLayout.LayoutParams.PARENT_ID
-                    endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
-                    topMargin = 8
-                    bottomMargin = 8
+            // Hide buttons container
+            findViewById<LinearLayout>(R.id.buttons_container).visibility = View.GONE
+
+            // Hide opponent turn message
+            val opponentTurnMessage = findViewById<TextView>(R.id.opponent_turn_message)
+            opponentTurnMessage?.visibility = View.GONE
+
+            // Hide time remaining
+            timeRemainingTextView.visibility = View.GONE
+
+            // Add game result information
+            addGameResultInformation()
+        } else {
+            // Regular game mode - check if it's the player's turn
+            val isPlayerTurn = gameRequest.gameData.playerTurn == currentUserId
+
+            // Create or find the opponent turn message TextView
+            var opponentTurnMessage = findViewById<TextView>(R.id.opponent_turn_message)
+            if (opponentTurnMessage == null) {
+                // Create new TextView if it doesn't exist
+                opponentTurnMessage = TextView(this).apply {
+                    id = R.id.opponent_turn_message
+                    layoutParams = ConstraintLayout.LayoutParams(
+                        ConstraintLayout.LayoutParams.MATCH_PARENT,
+                        ConstraintLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topToBottom = R.id.game_board_view
+                        bottomToTop = R.id.letter_rack_card
+                        startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                        endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+                        topMargin = 8
+                        bottomMargin = 8
+                    }
+                    gravity = android.view.Gravity.CENTER
+                    textSize = 18f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(Color.parseColor("#FF9800")) // Orange color
+                    text = "OPPONENT'S TURN"
                 }
-                gravity = android.view.Gravity.CENTER
-                textSize = 18f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(Color.parseColor("#FF9800")) // Orange color
-                text = "OPPONENT'S TURN"
+
+                // Add to the constraint layout
+                (findViewById<View>(R.id.game_board_view).parent as ViewGroup).addView(opponentTurnMessage)
             }
 
-            // Add to the constraint layout
-            (findViewById<View>(R.id.game_board_view).parent as ViewGroup).addView(opponentTurnMessage)
-        }
-
-        // Update UI based on whose turn it is
-        if (isPlayerTurn) {
-            // Player's turn - enable play button and hide message
-            playButton.isEnabled = true
-            playButton.text = "Play Word"
-            opponentTurnMessage.visibility = View.GONE
-        } else {
-            // Opponent's turn - disable play button and show message
-            playButton.isEnabled = false
-            playButton.text = "Wait for Opponent"
-            opponentTurnMessage.visibility = View.VISIBLE
+            // Update UI based on whose turn it is
+            if (isPlayerTurn) {
+                // Player's turn - enable play button and hide message
+                playButton.isEnabled = true
+                playButton.text = "Play Word"
+                opponentTurnMessage.visibility = View.GONE
+            } else {
+                // Opponent's turn - disable play button and show message
+                playButton.isEnabled = false
+                playButton.text = "Wait for Opponent"
+                opponentTurnMessage.visibility = View.VISIBLE
+            }
         }
     }
+
+
+    private fun addGameResultInformation() {
+        // Get winner info based on scores since winnerId doesn't exist
+        val yourScore = gameRequest.gameData.playerScores[currentUserId] ?: 0
+        val opponentId = if (gameRequest.senderId == currentUserId) gameRequest.receiverId else gameRequest.senderId
+        val opponentScore = gameRequest.gameData.playerScores[opponentId] ?: 0
+
+        // Determine winner based on scores
+        val isPlayerWinner = yourScore > opponentScore
+        val isTie = yourScore == opponentScore
+
+        // Create a result text
+        val resultMessage = when {
+            isTie -> "Game ended in a tie!"
+            isPlayerWinner -> "You won!"
+            else -> "You lost."
+        }
+
+        // Create final score text
+        val scoreMessage = "Final Score: You $yourScore - $opponentScore ${
+            if (gameRequest.senderId == currentUserId) gameRequest.receiverName else gameRequest.senderName
+        }"
+
+        // Create a TextView to show the result
+        val resultTextView = TextView(this).apply {
+            layoutParams = ConstraintLayout.LayoutParams(
+                ConstraintLayout.LayoutParams.MATCH_PARENT,
+                ConstraintLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topToBottom = R.id.game_board_view
+                bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+                topMargin = 24
+            }
+            gravity = android.view.Gravity.CENTER
+            textSize = 24f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(
+                when {
+                    isTie -> Color.parseColor("#FF9800") // Orange for tie
+                    isPlayerWinner -> Color.parseColor("#4CAF50") // Green for win
+                    else -> Color.parseColor("#E53935") // Red for loss
+                }
+            )
+            text = resultMessage
+        }
+
+        // Create a TextView to show the score
+        val scoreTextView = TextView(this).apply {
+            layoutParams = ConstraintLayout.LayoutParams(
+                ConstraintLayout.LayoutParams.MATCH_PARENT,
+                ConstraintLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topToBottom = resultTextView.id
+                bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+                topMargin = 8
+                bottomMargin = 24
+            }
+            gravity = android.view.Gravity.CENTER
+            textSize = 18f
+            setTextColor(Color.parseColor("#212121")) // Dark text
+            text = scoreMessage
+        }
+
+        // Add to the layout
+        val parentLayout = findViewById<ConstraintLayout>(R.id.game_container)
+        parentLayout.addView(resultTextView)
+        parentLayout.addView(scoreTextView)
+    }
+
 
     private fun loadPlayerLetters() {
         // Check if player already has letters assigned in Firebase
@@ -1025,7 +1104,7 @@ class GameActivity : AppCompatActivity() {
 
                         // Check if there's already a letter in this position (from current or previous turns)
                         if (placedLetters.containsKey(Pair(row, col)) || currentTurnLetters.containsKey(Pair(row, col))) {
-                            Toast.makeText(this, "Cannot place a letter on top of another letter", Toast.LENGTH_SHORT).show()
+                            //Toast.makeText(this, "Cannot place a letter on top of another letter", Toast.LENGTH_SHORT).show()
                             returnToRack()
                             return@setOnDragListener true
                         }
@@ -1055,7 +1134,7 @@ class GameActivity : AppCompatActivity() {
 
                             if (currentTurnLetters.isEmpty() && placedLetters.isEmpty()) {
                                 if (row != centerRow || col != centerCol) {
-                                    Toast.makeText(this, "You should put the first letter in the center", Toast.LENGTH_SHORT).show()
+                                    //Toast.makeText(this, "You should put the first letter in the center", Toast.LENGTH_SHORT).show()
                                     returnToRack()
                                     return@setOnDragListener true
                                 }
@@ -1070,7 +1149,7 @@ class GameActivity : AppCompatActivity() {
                                 val sameCol = cols.size == 1
 
                                 if (!sameRow && !sameCol) {
-                                    Toast.makeText(this, "In the first move you can only move horizontally or vertically", Toast.LENGTH_SHORT).show()
+                                    //Toast.makeText(this, "In the first move you can only move horizontally or vertically", Toast.LENGTH_SHORT).show()
                                     returnToRack()
                                     return@setOnDragListener true
                                 }
@@ -1086,13 +1165,13 @@ class GameActivity : AppCompatActivity() {
 
                                 val connects = adjacentPositions.any { placedLetters.containsKey(it) }
                                 if (!connects) {
-                                    Toast.makeText(this, "The new letter must be adjacent to an existing letter", Toast.LENGTH_SHORT).show()
+                                    //Toast.makeText(this, "The new letter must be adjacent to an existing letter", Toast.LENGTH_SHORT).show()
                                     returnToRack()
                                     return@setOnDragListener true
                                 }
                             } else {
                                 if (!isAdjacentToExistingLetter(row, col)) {
-                                    Toast.makeText(this, "The new letter must be in the correct orientation", Toast.LENGTH_SHORT).show()
+                                    //Toast.makeText(this, "The new letter must be in the correct orientation", Toast.LENGTH_SHORT).show()
                                     returnToRack()
                                     return@setOnDragListener true
                                 }
@@ -1425,17 +1504,17 @@ class GameActivity : AppCompatActivity() {
 
     private fun validateAndSubmitPlay() {
         if (currentTurnLetters.isEmpty()) {
-            Toast.makeText(this, "No letters placed on the board", Toast.LENGTH_SHORT).show()
+            //Toast.makeText(this, "No letters placed on the board", Toast.LENGTH_SHORT).show()
             return
         }
 
         if (!areLettersInStraightLine()) {
-            Toast.makeText(this, "Letters must be placed in a straight line", Toast.LENGTH_SHORT).show()
+            //Toast.makeText(this, "Letters must be placed in a straight line", Toast.LENGTH_SHORT).show()
             return
         }
 
         if (!areLettersContiguous()) {
-            Toast.makeText(this, "Letters must be contiguous (no gaps)", Toast.LENGTH_SHORT).show()
+            //Toast.makeText(this, "Letters must be contiguous (no gaps)", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -1444,7 +1523,7 @@ class GameActivity : AppCompatActivity() {
 
         if (isFirstMoveInGame) {
             if (!currentTurnLetters.containsKey(Pair(centerRow, centerCol))) {
-                Toast.makeText(this, "The first move must pass through the center square", Toast.LENGTH_SHORT).show()
+                //Toast.makeText(this, "The first move must pass through the center square", Toast.LENGTH_SHORT).show()
                 return
             }
 
@@ -1455,12 +1534,12 @@ class GameActivity : AppCompatActivity() {
             val isStraightCol = firstMoveCols.size == 1
 
             if (!isStraightRow && !isStraightCol) {
-                Toast.makeText(this, "In the first move the word must be only horizontal or only vertical", Toast.LENGTH_SHORT).show()
+                //Toast.makeText(this, "In the first move the word must be only horizontal or only vertical", Toast.LENGTH_SHORT).show()
                 return
             }
         } else {
             if (!connectsToExistingLetter()) {
-                Toast.makeText(this, "New letters must be connected to existing letters on the board", Toast.LENGTH_SHORT).show()
+                //Toast.makeText(this, "New letters must be connected to existing letters on the board", Toast.LENGTH_SHORT).show()
                 return
             }
         }
