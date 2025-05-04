@@ -80,7 +80,7 @@ class GameBoardView @JvmOverloads constructor(
 
     fun highlightCell(row: Int, col: Int, color: Int) {
         cellHighlights[Pair(row, col)] = color
-        invalidate()
+        invalidate() // Redraw the view
     }
 
     fun clearHighlights() {
@@ -170,6 +170,11 @@ class GameBoardView @JvmOverloads constructor(
             highlightPaint.color = color
             canvas.drawRect(left, top, right, bottom, highlightPaint)
         }
+    }
+
+    fun clearHighlight(row: Int, col: Int) {
+        cellHighlights.remove(Pair(row, col))
+        invalidate()
     }
 
     private fun drawMinesAndRewards(canvas: Canvas) {

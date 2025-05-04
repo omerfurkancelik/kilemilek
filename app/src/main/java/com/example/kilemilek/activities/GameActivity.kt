@@ -166,7 +166,7 @@ class GameActivity : AppCompatActivity() {
 
         gameBoardView.initializeIcons()
 
-        toggleMinesVisibility()
+        //toggleMinesVisibility()
 
         // Setup Actions button
         setupActionsButton()
@@ -967,6 +967,9 @@ class GameActivity : AppCompatActivity() {
             // Clear the letter from the board
             gameBoardView.clearLetter(position.first, position.second)
 
+            // Clear the highlight for this cell
+            gameBoardView.clearHighlight(position.first, position.second)
+
             // Add the letter back to the player's rack
             playerLetters.add(letter)
         }
@@ -976,8 +979,30 @@ class GameActivity : AppCompatActivity() {
 
         // Update the letter rack UI (local only)
         updateLetterRackUI()
+    }
 
-        // Note: Removed the Firebase update call here
+
+    private fun withdrawLetterFromBoard(row: Int, col: Int) {
+        val position = Pair(row, col)
+        val letter = currentTurnLetters[position] ?: return
+
+        // Remove the letter from the board
+        gameBoardView.clearLetter(row, col)
+
+        // Remove from current turn letters
+        currentTurnLetters.remove(position)
+
+        // Clear the highlight for this cell
+        gameBoardView.clearHighlight(position.first, position.second)
+
+        // Add back to player's rack
+        playerLetters.add(letter)
+
+        // Update letter rack UI (local only)
+        updateLetterRackUI()
+
+        // Re-validate and highlight remaining letters
+        highlightWordValidity()
     }
 
     private fun loadGameData() {
@@ -1033,31 +1058,47 @@ class GameActivity : AppCompatActivity() {
 
 
     private fun highlightWordValidity() {
-        if (currentTurnLetters.isEmpty()) return
+        if (currentTurnLetters.isEmpty()) {
+            gameBoardView.clearHighlights()
+            return
+        }
 
-        // Create map of positions for validation
+        // Create map of board state for validation
         val boardStateMap = mutableMapOf<String, String>()
-        placedLetters.forEach { (pos, letter) ->
-            boardStateMap["${pos.first},${pos.second}"] = letter.toString()
-        }
-        currentTurnLetters.forEach { (pos, letter) ->
-            boardStateMap["${pos.first},${pos.second}"] = letter.toString()
+
+        // Add existing letters from previous turns
+        placedLetters.forEach { (position, letter) ->
+            boardStateMap["${position.first},${position.second}"] = letter.toString()
         }
 
-        // Validate with dictionary
+        // Add new letters from current turn
+        currentTurnLetters.forEach { (position, letter) ->
+            boardStateMap["${position.first},${position.second}"] = letter.toString()
+        }
+
+        // Get positions of new letters for validation
+        val newLetterPositions = currentTurnLetters.keys.toList()
+
+        // Validate with the board validator
         val (isValid, mainWord, _) = boardValidator.validateNewWord(
             boardStateMap,
-            currentTurnLetters.keys.toList()
+            newLetterPositions
         )
 
-        // Highlight letters based on validity
-        val highlightColor = if (isValid) Color.GREEN else Color.RED
+        // Set highlight color based on validity
+        val highlightColor = if (isValid) {
+            Color.parseColor("#8064DD17") // Semi-transparent green
+        } else {
+            Color.parseColor("#80F44336") // Semi-transparent red
+        }
 
-        // Apply highlight color to current turn letters on the board
+        // Apply highlight to current turn letters on the board
         for (position in currentTurnLetters.keys) {
             gameBoardView.highlightCell(position.first, position.second, highlightColor)
         }
     }
+
+
 
     private fun checkFirstMoveTimeLimit() {
         if (isFirstMoveInGame && gameRequest.status == "accepted") {
@@ -1993,6 +2034,8 @@ class GameActivity : AppCompatActivity() {
                         gameBoardView.placeLetter(row, col, letterToPlace)
                         currentTurnLetters[Pair(row, col)] = letterToPlace
 
+                        highlightWordValidity()
+
                         if (!dragSourceIsBoard) {
                             val index = playerLetters.indexOf(letterToPlace)
                             if (index >= 0) {
@@ -2153,24 +2196,6 @@ class GameActivity : AppCompatActivity() {
         return null
     }
 
-    private fun withdrawLetterFromBoard(row: Int, col: Int) {
-        val position = Pair(row, col)
-        val letter = currentTurnLetters[position] ?: return
-
-        // Remove the letter from the board
-        gameBoardView.clearLetter(row, col)
-
-        // Remove from current turn letters
-        currentTurnLetters.remove(position)
-
-        // Add back to player's rack
-        playerLetters.add(letter)
-
-        // Update letter rack UI (local only)
-        updateLetterRackUI()
-
-        // Note: Removed the Firebase update call here
-    }
 
 
     private fun isAdjacentOrCrossesExistingWord(row: Int, col: Int): Boolean {
