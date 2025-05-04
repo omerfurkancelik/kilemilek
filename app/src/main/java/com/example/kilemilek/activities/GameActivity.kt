@@ -153,7 +153,7 @@ class GameActivity : AppCompatActivity() {
             toggleMinesVisibility()
         }
 
-        loadUserStats2()
+
 
         checkFirstMoveTimeLimit()
 
@@ -205,6 +205,8 @@ class GameActivity : AppCompatActivity() {
         // Initialize Firestore
         db = FirebaseFirestore.getInstance()
 
+        loadUserStats()
+
         // Get current user ID
         currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
@@ -234,20 +236,6 @@ class GameActivity : AppCompatActivity() {
         loadGameData()
     }
 
-    private fun loadUserStats2() {
-        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
-
-        try {
-            val deneme = db.collection("users").document(currentUser.uid)
-        } catch (e: Exception) {
-            Toast.makeText(this,e.toString(),Toast.LENGTH_SHORT).show()
-            Log.d("GameActivity",e.toString())
-        }
-
-
-
-        //Toast.makeText(this,currentUser.uid,Toast.LENGTH_SHORT).show()
-    }
 
     @SuppressLint("SetTextI18n")
     private fun loadUserStats() {
