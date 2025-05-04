@@ -49,7 +49,13 @@ class PowerupManager {
             MinePowerupType.LETTER_BAN to 3,
             MinePowerupType.EXTRA_MOVE to 2
         )
+
+
     }
+    fun getAllPowerups(): List<BoardPowerup> {
+        return powerups.toList()
+    }
+
 
     // List of all powerups on the board
     private val powerups = mutableListOf<BoardPowerup>()

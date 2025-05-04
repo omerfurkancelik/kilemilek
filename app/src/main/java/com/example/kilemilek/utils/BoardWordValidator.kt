@@ -2,6 +2,7 @@ package com.example.kilemilek.utils
 
 import android.util.Log
 import com.example.kilemilek.objects.GameBoardMatrix
+import java.util.Locale
 
 /**
  * Utility class to validate words on the game board
@@ -12,6 +13,12 @@ class BoardWordValidator(private val turkishDictionary: TurkishDictionary) {
     companion object {
         private const val TAG = "BoardWordValidator"
         private const val MIN_WORD_LENGTH = 2 // Minimum length for a valid word
+    }
+
+    private fun toTurkishLowerCase(text: String): String {
+        return text.replace('İ', 'i') // Dotted uppercase İ to dotted lowercase i
+            .replace('I', 'ı')     // Undotted uppercase I to undotted lowercase ı
+            .lowercase()            // Then standard lowercase for other characters
     }
 
     /**
@@ -161,13 +168,14 @@ class BoardWordValidator(private val turkishDictionary: TurkishDictionary) {
 
         wordsToCheck.forEach { word ->
             // Check the length of the word text, not the word object
-            if (word.wordText.length >= MIN_WORD_LENGTH && !turkishDictionary.isValidWord(word.wordText)) {
+            if (word.wordText.length >= MIN_WORD_LENGTH &&
+                !turkishDictionary.isValidWord(toTurkishLowerCase(word.wordText))) {
                 invalidWords.add(word.wordText)
             }
         }
 
         // Check if the main word is valid
-        val isMainWordValid = mainWord.isEmpty() || turkishDictionary.isValidWord(mainWord)
+        val isMainWordValid = mainWord.isEmpty() || turkishDictionary.isValidWord(toTurkishLowerCase(mainWord))
 
         // All words must be valid for the move to be valid
         val allWordsValid = invalidWords.isEmpty() && isMainWordValid

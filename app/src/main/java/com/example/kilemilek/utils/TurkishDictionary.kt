@@ -41,8 +41,8 @@ class TurkishDictionary(private val context: Context) {
                     while (reader.readLine().also { line = it } != null) {
                         line?.trim()?.let { word ->
                             if (word.isNotEmpty()) {
-                                // Convert to uppercase for case-insensitive matching
-                                wordsSet.add(word.uppercase())
+                                // Store words in lowercase for easier matching
+                                wordsSet.add(word.lowercase())
                             }
                         }
                     }
@@ -70,9 +70,15 @@ class TurkishDictionary(private val context: Context) {
             return false
         }
 
-        // Convert to uppercase for case-insensitive matching
-        val uppercaseWord = word.uppercase()
-        return uppercaseWord.isNotEmpty() && wordsSet.contains(uppercaseWord)
+        // Convert to lowercase with Turkish specific handling
+        val lowercaseWord = toTurkishLowerCase(word)
+        return lowercaseWord.isNotEmpty() && wordsSet.contains(lowercaseWord)
+    }
+
+    private fun toTurkishLowerCase(text: String): String {
+        return text.replace('İ', 'i') // Dotted uppercase İ to dotted lowercase i
+            .replace('I', 'ı')     // Undotted uppercase I to undotted lowercase ı
+            .lowercase()            // Then standard lowercase for other characters
     }
 
     /**

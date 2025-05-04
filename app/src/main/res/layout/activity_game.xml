@@ -22,6 +22,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="@color/accent_light"
             android:orientation="vertical"
             android:padding="12dp">
 
@@ -133,6 +134,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
+            android:background="@color/accent_light"
             android:padding="12dp">
 
             <TextView
@@ -212,21 +214,34 @@
             android:layout_width="56dp"
             android:layout_height="56dp"
             android:layout_marginEnd="8dp"
-            android:text=""
+            android:text="."
             android:textSize="18sp"
             android:textStyle="bold"
             android:backgroundTint="#673AB7"
             app:cornerRadius="8dp"
             android:contentDescription="Game Actions" />
 
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/show_mines_button"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="8dp"
+            android:backgroundTint="#FF1111"
+            app:icon="@drawable/ic_mine"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconTint="@color/white"
+            app:cornerRadius="8dp"
+            android:contentDescription="@string/withdraw_button_desc" />
         <!-- Play -->
         <Button
             android:id="@+id/play_button"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="49dp"
             android:layout_weight="1"
             android:backgroundTint="@color/primary"
-            android:text="Play Word"
+            android:text="Play"
             android:textAllCaps="false"
             android:textSize="16sp" />
     </LinearLayout>

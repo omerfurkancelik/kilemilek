@@ -6,9 +6,14 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.content.ContextCompat
+import com.example.kilemilek.R
+import com.example.kilemilek.models.BoardPowerup
+import com.example.kilemilek.models.MinePowerupType
 import com.example.kilemilek.objects.GameBoardMatrix
 import kotlin.math.floor
 
@@ -23,6 +28,13 @@ class GameBoardView @JvmOverloads constructor(
     private var cellSize = 0f
     private var boardStartX = 0f
     private var boardStartY = 0f
+
+    private val minePositions = mutableSetOf<Pair<Int, Int>>()
+    private val rewardPositions = mutableSetOf<Pair<Int, Int>>()
+    private val mineTypes = mutableMapOf<Pair<Int, Int>, MinePowerupType>()
+    private var showPowerups = false
+
+    private val mineIcons = mutableMapOf<MinePowerupType, Drawable?>()
 
     // Data structures to hold letters
     private val boardLetters = Array(boardSize) { Array<Char?>(boardSize) { null } }
@@ -42,6 +54,16 @@ class GameBoardView @JvmOverloads constructor(
         strokeWidth = 1f
     }
 
+    private val minePaint = Paint().apply {
+        style = Paint.Style.FILL
+        color = Color.parseColor("#80E53935") // Semi-transparent red
+    }
+
+    private val rewardPaint = Paint().apply {
+        style = Paint.Style.FILL
+        color = Color.parseColor("#809C27B0") // Semi-transparent purple
+    }
+
     private val textPaint = Paint().apply {
         color = Color.BLACK
         textAlign = Paint.Align.CENTER
@@ -53,6 +75,18 @@ class GameBoardView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
         textSize = 12f
     }
+
+    fun initializeIcons() {
+        mineIcons[MinePowerupType.SCORE_SPLIT] = ContextCompat.getDrawable(context, R.drawable.ic_score_split)
+        mineIcons[MinePowerupType.POINT_TRANSFER] = ContextCompat.getDrawable(context, R.drawable.ic_point_transfer)
+        mineIcons[MinePowerupType.LETTER_LOSS] = ContextCompat.getDrawable(context, R.drawable.ic_letter_loss)
+        mineIcons[MinePowerupType.EXTRA_MOVE_BARRIER] = ContextCompat.getDrawable(context, R.drawable.ic_barrier)
+        mineIcons[MinePowerupType.WORD_CANCELLATION] = ContextCompat.getDrawable(context, R.drawable.ic_cancel)
+        mineIcons[MinePowerupType.REGION_BAN] = ContextCompat.getDrawable(context, R.drawable.ic_region_ban)
+        mineIcons[MinePowerupType.LETTER_BAN] = ContextCompat.getDrawable(context, R.drawable.ic_letter_ban)
+        mineIcons[MinePowerupType.EXTRA_MOVE] = ContextCompat.getDrawable(context, R.drawable.ic_extra_move)
+    }
+
 
     // Colors for letter tiles
     private val currentTurnLetterColor = Color.parseColor("#FFF59D") // Yellow for current turn
@@ -80,11 +114,116 @@ class GameBoardView @JvmOverloads constructor(
         // Draw the board tiles
         drawBoardTiles(canvas)
 
+        // Draw mines and rewards if visible
+        if (showPowerups) {
+            drawMinesAndRewards(canvas)
+        }
+
         // Draw grid lines
         drawGridLines(canvas)
 
         // Draw letters
         drawLetters(canvas)
+    }
+
+    private fun drawMinesAndRewards(canvas: Canvas) {
+        // Draw mines (red indicators)
+        for (position in minePositions) {
+            val row = position.first
+            val col = position.second
+
+            val left = boardStartX + col * cellSize
+            val top = boardStartY + row * cellSize
+            val right = left + cellSize
+            val bottom = top + cellSize
+
+            // Draw mine background
+            canvas.drawRect(left, top, right, bottom, minePaint)
+
+            // Draw mine icon if available
+            val mineType = mineTypes[position] ?: continue
+            val icon = mineIcons[mineType] ?: continue
+
+            // Set icon bounds
+            val padding = cellSize * 0.2f
+            icon.setBounds(
+                (left + padding).toInt(),
+                (top + padding).toInt(),
+                (right - padding).toInt(),
+                (bottom - padding).toInt()
+            )
+
+            // Draw the icon
+            icon.draw(canvas)
+        }
+
+        // Draw rewards (purple indicators)
+        for (position in rewardPositions) {
+            val row = position.first
+            val col = position.second
+
+            val left = boardStartX + col * cellSize
+            val top = boardStartY + row * cellSize
+            val right = left + cellSize
+            val bottom = top + cellSize
+
+            // Draw reward background
+            canvas.drawRect(left, top, right, bottom, rewardPaint)
+
+            // Draw reward icon if available
+            val rewardType = mineTypes[position] ?: continue
+            val icon = mineIcons[rewardType] ?: continue
+
+            // Set icon bounds
+            val padding = cellSize * 0.2f
+            icon.setBounds(
+                (left + padding).toInt(),
+                (top + padding).toInt(),
+                (right - padding).toInt(),
+                (bottom - padding).toInt()
+            )
+
+            // Draw the icon
+            icon.draw(canvas)
+        }
+    }
+
+    fun togglePowerupVisibility(show: Boolean) {
+        showPowerups = show
+        invalidate()
+    }
+
+
+    fun setMinesAndRewards(powerups: List<BoardPowerup>) {
+        minePositions.clear()
+        rewardPositions.clear()
+        mineTypes.clear()
+
+        for (powerup in powerups) {
+            val position = powerup.position
+
+            // Classify as mine or reward
+            when (powerup.type) {
+                MinePowerupType.SCORE_SPLIT,
+                MinePowerupType.POINT_TRANSFER,
+                MinePowerupType.LETTER_LOSS,
+                MinePowerupType.EXTRA_MOVE_BARRIER,
+                MinePowerupType.WORD_CANCELLATION -> {
+                    minePositions.add(position)
+                }
+
+                MinePowerupType.REGION_BAN,
+                MinePowerupType.LETTER_BAN,
+                MinePowerupType.EXTRA_MOVE -> {
+                    rewardPositions.add(position)
+                }
+            }
+
+            // Store type for icon display
+            mineTypes[position] = powerup.type
+        }
+
+        invalidate()
     }
 
     private fun drawBoardTiles(canvas: Canvas) {

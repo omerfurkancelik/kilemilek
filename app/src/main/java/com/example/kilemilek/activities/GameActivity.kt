@@ -69,6 +69,8 @@ class GameActivity : AppCompatActivity() {
     private lateinit var letterRackLayout: LinearLayout
     private lateinit var playButton: Button
     private lateinit var withdrawButton: Button
+    private lateinit var showMinesButton: Button
+    private var areMinesVisible = false
     private lateinit var actionsButton: Button
     private lateinit var timeRemainingTextView: TextView
 
@@ -139,6 +141,15 @@ class GameActivity : AppCompatActivity() {
         shuffleButton = findViewById(R.id.shuffle_button)
         actionsButton = findViewById(R.id.actions_button)
 
+        showMinesButton = findViewById(R.id.show_mines_button)
+        showMinesButton.setOnClickListener {
+            toggleMinesVisibility()
+        }
+
+        gameBoardView.initializeIcons()
+
+        toggleMinesVisibility()
+
         // Setup Actions button
         setupActionsButton()
 
@@ -203,6 +214,16 @@ class GameActivity : AppCompatActivity() {
 
         // Load game data
         loadGameData()
+    }
+
+    private fun toggleMinesVisibility() {
+        areMinesVisible = !areMinesVisible
+
+        // Update button text
+        showMinesButton.text = if (areMinesVisible) "Hide Mines" else "Show Mines"
+
+        // Toggle visibility in game board
+        gameBoardView.togglePowerupVisibility(areMinesVisible)
     }
 
 
@@ -471,6 +492,10 @@ class GameActivity : AppCompatActivity() {
 
         // Update powerups UI
         updatePowerupsUI()
+
+        // Update board with mine and reward positions
+        val boardPowerups = powerupManager.getAllPowerups()
+        gameBoardView.setMinesAndRewards(boardPowerups)
     }
 
 
@@ -927,6 +952,8 @@ class GameActivity : AppCompatActivity() {
 
                 if (snapshot != null && snapshot.exists()) {
                     val updatedGame = snapshot.toObject(GameRequestModel::class.java) ?: return@addSnapshotListener
+
+                    Toast.makeText(this,"Dinleniyor",Toast.LENGTH_SHORT).show()
 
                     // Update game request data
                     gameRequest = updatedGame
@@ -2023,6 +2050,8 @@ class GameActivity : AppCompatActivity() {
         }
 
         // All validation passed, submit the play
+
+        checkForMinesInCurrentWord()
 
         if (hasTriggeredMine) {
             // Process mine effect
