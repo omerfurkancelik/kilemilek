@@ -1,7 +1,9 @@
 package com.example.kilemilek.fragments
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -67,6 +69,8 @@ class HomeFragment : Fragment() {
             welcomeText.text = "Welcome to Kilemilek\n${it.email}"
         }
 
+        loadUserStats()
+
         // Set up RecyclerViews
         activeGamesRecyclerView.layoutManager = LinearLayoutManager(context)
         finishedGamesRecyclerView.layoutManager = LinearLayoutManager(context)
@@ -98,6 +102,44 @@ class HomeFragment : Fragment() {
         // Refresh games when fragment becomes visible
         loadActiveGames()
         loadFinishedGames()
+    }
+
+
+
+    @SuppressLint("SetTextI18n")
+    private fun loadUserStats() {
+        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
+
+        db.collection("users").document(currentUser.uid)
+            .get()
+            .addOnSuccessListener { document ->
+                if (document != null && document.exists()) {
+                    val gamesPlayed = document.getLong("gamesPlayed")?.toInt() ?: 0
+
+                    var gamesWon = 0
+                    if (document.contains("gamesWon")) {
+                        gamesWon = document.getLong("gamesWon")?.toInt() ?: 0
+                    } else {
+                        // Add gamesWon field to the document
+                        db.collection("users").document(currentUser.uid)
+                            .update("gamesWon", 0)
+                            .addOnFailureListener { e ->
+                                Log.e("GameActivity", "Error adding gamesWon field: ${e.message}")
+                            }
+                    }
+
+                    // Calculate success percentage
+                    val successPercentage = if (gamesPlayed > 0) {
+                        (gamesWon.toFloat() / gamesPlayed * 100).toInt()
+                    } else {
+                        0
+                    }
+
+                    welcomeText.text = "Welcome to Kilemilek\n Başarı Yüzdesi : $successPercentage \n Games Won $gamesWon/$gamesPlayed "
+
+
+                }
+            }
     }
 
     private fun loadActiveGames() {

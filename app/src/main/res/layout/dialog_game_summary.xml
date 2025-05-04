@@ -1,0 +1,49 @@
+<!-- layout/dialog_game_summary.xml -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/winner_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Winner!"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:id="@+id/total_score"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Your Score: 0"
+        android:textSize="18sp"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:id="@+id/opponent_score"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Opponent Score: 0"
+        android:textSize="18sp"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:id="@+id/remaining_letters"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Remaining Letters: 0"
+        android:textSize="18sp"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:id="@+id/mine_effects"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Mine Effects: None"
+        android:textSize="18sp"
+        android:layout_marginBottom="8dp"/>
+</LinearLayout>

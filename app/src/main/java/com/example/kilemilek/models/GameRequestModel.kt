@@ -41,5 +41,6 @@ data class LastMove(
     val playerId: String = "",
     val word: String = "",
     val points: Int = 0,
-    val timestamp: Long = 0
+    val timestamp: Long = 0,
+    val mineEffect: String? = null  // Add this field
 )

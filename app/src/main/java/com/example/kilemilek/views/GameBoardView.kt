@@ -23,11 +23,25 @@ class GameBoardView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
+
+    interface OnLetterPlacedListener {
+        fun onLetterPlaced(row: Int, col: Int, letter: Char?)
+    }
+
+    private var letterPlacedListener: OnLetterPlacedListener? = null
+
+
+    fun setOnLetterPlacedListener(listener: OnLetterPlacedListener) {
+        letterPlacedListener = listener
+    }
+
     // Board dimensions
     private val boardSize = GameBoardMatrix.BOARD_SIZE
     private var cellSize = 0f
     private var boardStartX = 0f
     private var boardStartY = 0f
+
+    private val cellHighlights = mutableMapOf<Pair<Int, Int>, Int>()
 
     private val minePositions = mutableSetOf<Pair<Int, Int>>()
     private val rewardPositions = mutableSetOf<Pair<Int, Int>>()
@@ -62,6 +76,16 @@ class GameBoardView @JvmOverloads constructor(
     private val rewardPaint = Paint().apply {
         style = Paint.Style.FILL
         color = Color.parseColor("#809C27B0") // Semi-transparent purple
+    }
+
+    fun highlightCell(row: Int, col: Int, color: Int) {
+        cellHighlights[Pair(row, col)] = color
+        invalidate()
+    }
+
+    fun clearHighlights() {
+        cellHighlights.clear()
+        invalidate()
     }
 
     private val textPaint = Paint().apply {
@@ -114,16 +138,38 @@ class GameBoardView @JvmOverloads constructor(
         // Draw the board tiles
         drawBoardTiles(canvas)
 
-        // Draw mines and rewards if visible
+        // Draw powerups if visible
         if (showPowerups) {
             drawMinesAndRewards(canvas)
         }
+
+        // Draw cell highlights
+        drawCellHighlights(canvas)
 
         // Draw grid lines
         drawGridLines(canvas)
 
         // Draw letters
         drawLetters(canvas)
+    }
+
+    private fun drawCellHighlights(canvas: Canvas) {
+        val highlightPaint = Paint().apply {
+            style = Paint.Style.FILL
+        }
+
+        for ((position, color) in cellHighlights) {
+            val row = position.first
+            val col = position.second
+
+            val left = boardStartX + col * cellSize
+            val top = boardStartY + row * cellSize
+            val right = left + cellSize
+            val bottom = top + cellSize
+
+            highlightPaint.color = color
+            canvas.drawRect(left, top, right, bottom, highlightPaint)
+        }
     }
 
     private fun drawMinesAndRewards(canvas: Canvas) {

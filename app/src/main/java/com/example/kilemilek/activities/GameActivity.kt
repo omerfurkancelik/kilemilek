@@ -70,6 +70,9 @@ class GameActivity : AppCompatActivity() {
     private lateinit var playButton: Button
     private lateinit var withdrawButton: Button
     private lateinit var showMinesButton: Button
+    private lateinit var userNameTextView: TextView
+    private lateinit var userStatsTextView: TextView
+    private lateinit var wordScorePreview: TextView
     private var areMinesVisible = false
     private lateinit var actionsButton: Button
     private lateinit var timeRemainingTextView: TextView
@@ -138,6 +141,10 @@ class GameActivity : AppCompatActivity() {
         letterRackLayout = findViewById(R.id.letter_rack)
         playButton = findViewById(R.id.play_button)
         withdrawButton = findViewById(R.id.withdraw_button)
+        userNameTextView = findViewById(R.id.user_name_text)
+        userStatsTextView = findViewById(R.id.user_stats_text)
+        wordScorePreview = findViewById(R.id.word_score_preview)
+
         shuffleButton = findViewById(R.id.shuffle_button)
         actionsButton = findViewById(R.id.actions_button)
 
@@ -145,6 +152,17 @@ class GameActivity : AppCompatActivity() {
         showMinesButton.setOnClickListener {
             toggleMinesVisibility()
         }
+
+        loadUserStats2()
+
+        checkFirstMoveTimeLimit()
+
+        gameBoardView.setOnLetterPlacedListener(object : GameBoardView.OnLetterPlacedListener {
+            override fun onLetterPlaced(row: Int, col: Int, letter: Char?) {
+                updateWordScorePreview()
+                highlightWordValidity()
+            }
+        })
 
         gameBoardView.initializeIcons()
 
@@ -215,6 +233,169 @@ class GameActivity : AppCompatActivity() {
         // Load game data
         loadGameData()
     }
+
+    private fun loadUserStats2() {
+        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
+
+        try {
+            val deneme = db.collection("users").document(currentUser.uid)
+        } catch (e: Exception) {
+            Toast.makeText(this,e.toString(),Toast.LENGTH_SHORT).show()
+            Log.d("GameActivity",e.toString())
+        }
+
+
+
+        //Toast.makeText(this,currentUser.uid,Toast.LENGTH_SHORT).show()
+    }
+
+    @SuppressLint("SetTextI18n")
+    private fun loadUserStats() {
+        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
+
+        db.collection("users").document(currentUser.uid)
+            .get()
+            .addOnSuccessListener { document ->
+                if (document != null && document.exists()) {
+                    // Document exists, proceed as normal
+                    val name = document.getString("name") ?: "User"
+                    val gamesPlayed = document.getLong("gamesPlayed")?.toInt() ?: 0
+
+                    // Check if gamesWon field exists
+                    var gamesWon = 0
+                    if (document.contains("gamesWon")) {
+                        gamesWon = document.getLong("gamesWon")?.toInt() ?: 0
+                    } else {
+                        // Initialize gamesWon field
+                        db.collection("users").document(currentUser.uid)
+                            .update("gamesWon", 0)
+                            .addOnFailureListener { e ->
+                                Log.e("GameActivity", "Error adding gamesWon field: ${e.message}")
+                            }
+                    }
+
+                    // Calculate success percentage
+                    val successPercentage = if (gamesPlayed > 0) {
+                        (gamesWon.toFloat() / gamesPlayed * 100).toInt()
+                    } else {
+                        0
+                    }
+
+                    // Update UI
+                    userNameTextView.text = name
+                    userStatsTextView.text = "Success: $successPercentage% ($gamesWon/$gamesPlayed)"
+                } else {
+                    // Document doesn't exist yet - create it
+                    val userData = hashMapOf(
+                        "userId" to currentUser.uid,
+                        "email" to (currentUser.email ?: ""),
+                        "name" to (currentUser.displayName ?: "User"),
+                        "profileImageUrl" to "",
+                        "gamesPlayed" to 0,
+                        "gamesWon" to 0,
+                        "createdAt" to System.currentTimeMillis()
+                    )
+
+                    // Create the user document
+                    db.collection("users").document(currentUser.uid)
+                        .set(userData)
+                        .addOnSuccessListener {
+                            // Show default stats
+                            userNameTextView.text = userData["name"] as String
+                            userStatsTextView.text = "Success: 0% (0/0)"
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("GameActivity", "Error creating user document: ${e.message}")
+                            // Still set default UI values
+                            userNameTextView.text = "User"
+                            userStatsTextView.text = "Success: 0% (0/0)"
+                        }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e("GameActivity", "Error loading user stats: ${e.message}")
+                // Set default values in case of error
+                userNameTextView.text = "User"
+                userStatsTextView.text = "Success: 0% (0/0)"
+            }
+    }
+
+
+    private fun calculateWordScore(): Int {
+        // First calculate letter points
+        var letterPoints = 0
+        var wordMultiplier = 1
+
+        currentTurnLetters.forEach { (position, letter) ->
+            val tileType = GameBoardMatrix.getTileType(position.first, position.second)
+
+            // Get base letter value
+            var letterValue = if (jokerPositions.contains(position)) {
+                0 // Jokers are worth 0 points
+            } else {
+                LetterDistribution.getLetterValue(letter)
+            }
+
+            // Apply letter multipliers
+            when (tileType) {
+                GameBoardMatrix.DL -> letterValue *= 2 // Double Letter
+                GameBoardMatrix.TL -> letterValue *= 3 // Triple Letter
+            }
+
+            letterPoints += letterValue
+
+            // Track word multipliers
+            when (tileType) {
+                GameBoardMatrix.DW -> wordMultiplier *= 2 // Double Word
+                GameBoardMatrix.TW -> wordMultiplier *= 3 // Triple Word
+            }
+        }
+
+        // Apply word multiplier to get final score
+        return letterPoints * wordMultiplier
+    }
+
+    private fun updateWordScorePreview() {
+        if (currentTurnLetters.isEmpty()) {
+            wordScorePreview.visibility = View.GONE
+            return
+        }
+
+        // Calculate score with multipliers
+        val score = calculateWordScore()
+
+        // Update UI
+        wordScorePreview.text = "Score: $score"
+        wordScorePreview.visibility = View.VISIBLE
+
+        // Position the preview - we need to calculate this based on the last letter position
+        positionScorePreview()
+    }
+
+    private fun positionScorePreview() {
+        if (currentTurnLetters.isEmpty()) return
+
+        // Find the bottom-most and right-most letter
+        var maxRow = 0
+        var maxCol = 0
+
+        currentTurnLetters.keys.forEach { pos ->
+            if (pos.first > maxRow) maxRow = pos.first
+            if (pos.second > maxCol) maxCol = pos.second
+        }
+
+        // Get board cell size and position
+        val cellSize = gameBoardView.width / GameBoardMatrix.BOARD_SIZE.toFloat()
+        val x = gameBoardView.x + (maxCol + 1) * cellSize
+        val y = gameBoardView.y + (maxRow + 1) * cellSize
+
+        // Position score preview
+        wordScorePreview.x = x - wordScorePreview.width
+        wordScorePreview.y = y
+    }
+
+
+
 
     private fun toggleMinesVisibility() {
         areMinesVisible = !areMinesVisible
@@ -859,6 +1040,182 @@ class GameActivity : AppCompatActivity() {
                 Toast.makeText(this, "Error loading game: ${exception.message}", Toast.LENGTH_SHORT).show()
                 finish()
             }
+    }
+
+
+
+    private fun highlightWordValidity() {
+        if (currentTurnLetters.isEmpty()) return
+
+        // Create map of positions for validation
+        val boardStateMap = mutableMapOf<String, String>()
+        placedLetters.forEach { (pos, letter) ->
+            boardStateMap["${pos.first},${pos.second}"] = letter.toString()
+        }
+        currentTurnLetters.forEach { (pos, letter) ->
+            boardStateMap["${pos.first},${pos.second}"] = letter.toString()
+        }
+
+        // Validate with dictionary
+        val (isValid, mainWord, _) = boardValidator.validateNewWord(
+            boardStateMap,
+            currentTurnLetters.keys.toList()
+        )
+
+        // Highlight letters based on validity
+        val highlightColor = if (isValid) Color.GREEN else Color.RED
+
+        // Apply highlight color to current turn letters on the board
+        for (position in currentTurnLetters.keys) {
+            gameBoardView.highlightCell(position.first, position.second, highlightColor)
+        }
+    }
+
+    private fun checkFirstMoveTimeLimit() {
+        if (isFirstMoveInGame && gameRequest.status == "accepted") {
+            val currentTime = System.currentTimeMillis()
+            val gameCreationTime = gameRequest.createdAt
+
+            // Check if more than 1 hour has passed
+            if (currentTime - gameCreationTime > 60 * 60 * 1000) {
+                // First player forfeits if they haven't made a move
+                if (gameRequest.gameData.playerTurn == gameRequest.senderId) {
+                    declareWinner(gameRequest.receiverId, "time_limit_exceeded")
+                } else {
+                    declareWinner(gameRequest.senderId, "time_limit_exceeded")
+                }
+            }
+        }
+    }
+
+
+    private fun updateUserStats(isWin: Boolean) {
+        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
+
+        // Get user document reference
+        val userRef = db.collection("users").document(currentUser.uid)
+
+        // Update stats atomically
+        db.runTransaction { transaction ->
+            val userDoc = transaction.get(userRef)
+
+            // Increment games played
+            val gamesPlayed = userDoc.getLong("gamesPlayed")?.toInt() ?: 0
+            val newGamesPlayed = gamesPlayed + 1
+
+            // Check if gamesWon field exists
+            var gamesWon = 0
+            if (userDoc.contains("gamesWon")) {
+                gamesWon = userDoc.getLong("gamesWon")?.toInt() ?: 0
+            }
+
+            // Increment games won if user won
+            val newGamesWon = if (isWin) gamesWon + 1 else gamesWon
+
+            // Update document
+            transaction.update(userRef, "gamesPlayed", newGamesPlayed)
+            transaction.update(userRef, "gamesWon", newGamesWon)
+
+            // Success
+            null
+        }.addOnFailureListener { exception ->
+            Log.e("GameActivity", "Error updating user stats: ${exception.message}")
+        }
+    }
+
+
+    private fun declareWinner(winnerId: String, reason: String) {
+        // Update game status to completed
+        db.collection("game_requests").document(gameId)
+            .update(
+                mapOf(
+                    "status" to "completed",
+                    "winnerId" to winnerId,
+                    "lastUpdatedAt" to System.currentTimeMillis(),
+                    "gameData.endReason" to reason
+                )
+            )
+            .addOnSuccessListener {
+                // Determine winner name to display
+                val winnerName = if (winnerId == currentUserId) {
+                    "You"
+                } else {
+                    if (gameRequest.senderId == winnerId) gameRequest.senderName else gameRequest.receiverName
+                }
+
+                // Show message based on reason
+                val message = when (reason) {
+                    "time_limit_exceeded" -> "$winnerName won because the time limit for the first move was exceeded."
+                    "consecutive_passes" -> "$winnerName won because of three consecutive passes."
+                    "resignation" -> "$winnerName won because the opponent resigned."
+                    else -> "$winnerName won the game."
+                }
+
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+                // If viewing player is not the winner, update their stats
+                if (winnerId != currentUserId) {
+                    updateUserStats(false)
+                } else {
+                    updateUserStats(true)
+                }
+
+                // Finish the activity
+                finish()
+            }
+            .addOnFailureListener { exception ->
+                Toast.makeText(this, "Error ending game: ${exception.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+
+    private fun showGameSummary() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_game_summary, null)
+
+        // Get data
+        val yourScore = gameRequest.gameData.playerScores[currentUserId] ?: 0
+        val opponentId = if (gameRequest.senderId == currentUserId) gameRequest.receiverId else gameRequest.senderId
+        val opponentName = if (gameRequest.senderId == currentUserId) gameRequest.receiverName else gameRequest.senderName
+        val opponentScore = gameRequest.gameData.playerScores[opponentId] ?: 0
+
+        // Set summary details
+        dialogView.findViewById<TextView>(R.id.total_score).text = "Your Score: $yourScore"
+        dialogView.findViewById<TextView>(R.id.remaining_letters).text = "Remaining Letters: ${playerLetters.size}"
+        dialogView.findViewById<TextView>(R.id.opponent_score).text = "Opponent Score: $opponentScore"
+
+        // Set mine effects if any were triggered
+        val mineEffectsText = if (gameRequest.gameData.lastMove.mineEffect?.isNotEmpty() == true) {
+            "Mine Effects: ${gameRequest.gameData.lastMove.mineEffect}"
+        } else {
+            "Mine Effects: None"
+        }
+        dialogView.findViewById<TextView>(R.id.mine_effects).text = mineEffectsText
+
+        // Determine and show winner
+        val winnerText = when {
+            yourScore > opponentScore -> "You won!"
+            yourScore < opponentScore -> "$opponentName won!"
+            else -> "It's a tie!"
+        }
+        dialogView.findViewById<TextView>(R.id.winner_text).text = winnerText
+
+        // Set text color based on result
+        val winnerTextView = dialogView.findViewById<TextView>(R.id.winner_text)
+        winnerTextView.setTextColor(
+            when {
+                yourScore > opponentScore -> Color.parseColor("#4CAF50") // Green
+                yourScore < opponentScore -> Color.parseColor("#E53935") // Red
+                else -> Color.parseColor("#FF9800") // Orange
+            }
+        )
+
+        // Show dialog
+        AlertDialog.Builder(this)
+            .setTitle("Game Over")
+            .setView(dialogView)
+            .setPositiveButton("OK") { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
     }
 
 
@@ -2747,23 +3104,26 @@ class GameActivity : AppCompatActivity() {
             // Just ensure they will be saved in Firestore
         }
 
+        val lastMove = LastMove(
+            playerId = currentUserId,
+            word = currentTurnLetters.entries.sortedBy { it.key.first * 100 + it.key.second }
+                .joinToString("") { it.value.toString() },
+            points = finalScore,
+            timestamp = currentTime,
+            mineEffect = mineResult.message // Store the mine effect message
+        )
+
         // Update game data - preserve time limit settings
         val updatedGameData = GameData(
             boardState = boardStateMap,
-            playerTurn = nextPlayerId, // Switch turn (to opponent or self if extra move)
+            playerTurn = nextPlayerId,
             playerScores = playerScores,
             playerLetters = updatedLettersMap,
-            lastMove = LastMove(
-                playerId = currentUserId,
-                word = currentTurnLetters.entries.sortedBy { it.key.first * 100 + it.key.second }
-                    .joinToString("") { it.value.toString() },
-                points = finalScore,
-                timestamp = currentTime
-            ),
-            timeLimit = gameTimeLimit,  // Preserve the original time limit
-            timeType = gameTimeType,    // Preserve the original time type
-            passCount = passCount,      // Reset pass count since a word was played
-            powerups = powerupsData     // Store powerups data
+            lastMove = lastMove,  // Use our new lastMove with mineEffect
+            timeLimit = gameTimeLimit,
+            timeType = gameTimeType,
+            passCount = passCount,
+            powerups = powerupsData
         )
 
         // Update Firestore

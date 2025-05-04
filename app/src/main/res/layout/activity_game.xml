@@ -8,9 +8,9 @@
     android:padding="16dp"
     tools:context=".activities.GameActivity">
 
-    <!-- Game Info Section -->
+    <!-- User Stats Section -->
     <androidx.cardview.widget.CardView
-        android:id="@+id/game_info_card"
+        android:id="@+id/user_stats_card"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         app:cardCornerRadius="8dp"
@@ -22,7 +22,44 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@color/accent_light"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <TextView
+                android:id="@+id/user_name_text"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="User Name"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/user_stats_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Success: 0% (0/0)"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Game Info Section -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/game_info_card"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/user_stats_card">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="12dp">
 
@@ -103,6 +140,22 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/game_info_card" />
 
+    <!-- Word Score Preview -->
+    <TextView
+        android:id="@+id/word_score_preview"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/score_preview_background"
+        android:padding="8dp"
+        android:text="Score: 0"
+        android:textColor="@color/white"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/letter_rack_card"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
     <!-- Opponent Turn Text -->
     <TextView
         android:id="@+id/opponent_turn_message"
@@ -134,7 +187,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:background="@color/accent_light"
             android:padding="12dp">
 
             <TextView
@@ -159,7 +211,6 @@
                     android:gravity="center_vertical" />
             </HorizontalScrollView>
 
-            <!-- ZAMAN burada olacak -->
             <TextView
                 android:id="@+id/time_remaining_text"
                 android:layout_width="match_parent"
@@ -185,9 +236,9 @@
         <!-- Shuffle -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/shuffle_button"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:layout_marginEnd="8dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="4dp"
             android:backgroundTint="#9C27B0"
             app:icon="@drawable/ic_shuffle"
             app:iconGravity="textStart"
@@ -198,9 +249,9 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/withdraw_button"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:layout_marginEnd="8dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="4dp"
             android:backgroundTint="#4CAF50"
             app:icon="@drawable/ic_withdraw"
             app:iconGravity="textStart"
@@ -209,39 +260,40 @@
             app:cornerRadius="8dp"
             android:contentDescription="@string/withdraw_button_desc" />
 
+        <!-- Show Mines Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/show_mines_button"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="4dp"
+            android:backgroundTint="#E53935"
+            app:icon="@drawable/ic_mine"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconTint="@color/white"
+            app:cornerRadius="8dp"
+            android:contentDescription="Show/hide mines" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/actions_button"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:layout_marginEnd="8dp"
-            android:text="."
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="4dp"
+            android:text="⋮"
             android:textSize="18sp"
             android:textStyle="bold"
             android:backgroundTint="#673AB7"
             app:cornerRadius="8dp"
             android:contentDescription="Game Actions" />
 
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/show_mines_button"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:layout_marginEnd="8dp"
-            android:backgroundTint="#FF1111"
-            app:icon="@drawable/ic_mine"
-            app:iconGravity="textStart"
-            app:iconPadding="0dp"
-            app:iconTint="@color/white"
-            app:cornerRadius="8dp"
-            android:contentDescription="@string/withdraw_button_desc" />
         <!-- Play -->
         <Button
             android:id="@+id/play_button"
             android:layout_width="0dp"
-            android:layout_height="49dp"
+            android:layout_height="48dp"
             android:layout_weight="1"
             android:backgroundTint="@color/primary"
-            android:text="Play"
+            android:text="Play Word"
             android:textAllCaps="false"
             android:textSize="16sp" />
     </LinearLayout>
